@@ -109,8 +109,10 @@ contract VotingSystem {
         newElection.id = electionCount;
         newElection.name = _name;
         newElection.description = _description;
-        newElection.startTime = block.timestamp + (_startOffset * 1 hours);
-        newElection.endTime = block.timestamp + (_startOffset * 1 hours) + (_durationInDays * 1 days);
+        
+        uint256 startTime = block.timestamp + (_startOffset * 1 hours);
+        newElection.startTime = startTime;
+        newElection.endTime = startTime + (_durationInDays * 1 days);
         newElection.exists = true;
         newElection.candidateCount = 0;
         

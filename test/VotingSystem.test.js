@@ -9,6 +9,13 @@ describe("VotingSystem", function () {
   let voter2;
   let voter3;
 
+  // Test constants
+  const IMMEDIATE_START = 0;
+  const ONE_HOUR_START = 1;
+  const ONE_DAY_START = 24;
+  const DEFAULT_DURATION = 7;
+  const ONE_DAY_DURATION = 1;
+
   beforeEach(async function () {
     [owner, voter1, voter2, voter3] = await ethers.getSigners();
     
@@ -32,8 +39,8 @@ describe("VotingSystem", function () {
       const tx = await votingSystem.createElection(
         "Presidential Election",
         "Choose the next president",
-        24,  // Start in 24 hours
-        7    // Duration 7 days
+        ONE_DAY_START,
+        DEFAULT_DURATION
       );
       
       const receipt = await tx.wait();
@@ -42,19 +49,19 @@ describe("VotingSystem", function () {
 
     it("Should fail to create election with empty name", async function () {
       await expect(
-        votingSystem.createElection("", "Description", 24, 7)
+        votingSystem.createElection("", "Description", ONE_DAY_START, DEFAULT_DURATION)
       ).to.be.revertedWith("Election name cannot be empty");
     });
 
     it("Should fail to create election with zero duration", async function () {
       await expect(
-        votingSystem.createElection("Election", "Description", 24, 0)
+        votingSystem.createElection("Election", "Description", ONE_DAY_START, 0)
       ).to.be.revertedWith("Duration must be greater than 0");
     });
 
     it("Should only allow owner to create elections", async function () {
       await expect(
-        votingSystem.connect(voter1).createElection("Election", "Description", 24, 7)
+        votingSystem.connect(voter1).createElection("Election", "Description", ONE_DAY_START, DEFAULT_DURATION)
       ).to.be.revertedWith("Only owner can call this function");
     });
   });
@@ -62,7 +69,7 @@ describe("VotingSystem", function () {
   describe("Candidate Management", function () {
     beforeEach(async function () {
       // Create election that starts in 1 hour (allows adding candidates)
-      await votingSystem.createElection("Test Election", "Description", 1, 7);
+      await votingSystem.createElection("Test Election", "Description", ONE_HOUR_START, DEFAULT_DURATION);
     });
 
     it("Should add a candidate successfully", async function () {
@@ -94,7 +101,7 @@ describe("VotingSystem", function () {
 
   describe("Voter Registration", function () {
     beforeEach(async function () {
-      await votingSystem.createElection("Test Election", "Description", 24, 7);
+      await votingSystem.createElection("Test Election", "Description", ONE_DAY_START, DEFAULT_DURATION);
     });
 
     it("Should register a voter successfully", async function () {
@@ -131,7 +138,7 @@ describe("VotingSystem", function () {
   describe("Voting", function () {
     beforeEach(async function () {
       // Create election that starts immediately (0 hours offset)
-      await votingSystem.createElection("Test Election", "Description", 0, 7);
+      await votingSystem.createElection("Test Election", "Description", IMMEDIATE_START, DEFAULT_DURATION);
       
       // Add candidates
       await votingSystem.addCandidate(1, "Candidate A");
@@ -172,7 +179,7 @@ describe("VotingSystem", function () {
 
   describe("Election Queries", function () {
     beforeEach(async function () {
-      await votingSystem.createElection("Test Election", "Test Description", 24, 7);
+      await votingSystem.createElection("Test Election", "Test Description", ONE_DAY_START, DEFAULT_DURATION);
     });
 
     it("Should get election details", async function () {
@@ -199,7 +206,7 @@ describe("VotingSystem", function () {
 
   describe("Winner Determination", function () {
     it("Should fail to get winner before election ends", async function () {
-      await votingSystem.createElection("Test Election", "Description", 0, 7);
+      await votingSystem.createElection("Test Election", "Description", IMMEDIATE_START, DEFAULT_DURATION);
       
       await expect(
         votingSystem.getWinner(1)
@@ -207,7 +214,7 @@ describe("VotingSystem", function () {
     });
 
     it("Should determine winner after election ends", async function () {
-      await votingSystem.createElection("Test Election", "Description", 0, 1);
+      await votingSystem.createElection("Test Election", "Description", IMMEDIATE_START, ONE_DAY_DURATION);
       
       // Fast forward time past election end
       await time.increase(2 * 24 * 60 * 60); // 2 days
