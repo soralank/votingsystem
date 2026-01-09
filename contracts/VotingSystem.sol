@@ -92,11 +92,13 @@ contract VotingSystem {
      * @dev Create a new election
      * @param _name Name of the election
      * @param _description Description of the election
+     * @param _startOffset Number of hours from now when election starts (allows time to add candidates)
      * @param _durationInDays Duration of the election in days
      */
     function createElection(
         string memory _name,
         string memory _description,
+        uint256 _startOffset,
         uint256 _durationInDays
     ) public onlyOwner returns (uint256) {
         require(bytes(_name).length > 0, "Election name cannot be empty");
@@ -107,8 +109,8 @@ contract VotingSystem {
         newElection.id = electionCount;
         newElection.name = _name;
         newElection.description = _description;
-        newElection.startTime = block.timestamp;
-        newElection.endTime = block.timestamp + (_durationInDays * 1 days);
+        newElection.startTime = block.timestamp + (_startOffset * 1 hours);
+        newElection.endTime = block.timestamp + (_startOffset * 1 hours) + (_durationInDays * 1 days);
         newElection.exists = true;
         newElection.candidateCount = 0;
         

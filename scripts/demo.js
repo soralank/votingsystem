@@ -28,16 +28,24 @@ async function main() {
   const tx1 = await votingSystem.createElection(
     "Presidential Election 2024",
     "National presidential election to choose the next leader",
-    7 // 7 days duration
+    24, // Start in 24 hours (allows time to add candidates)
+    7   // 7 days duration
   );
   await tx1.wait();
   console.log("✓ Election created with ID: 1");
+  console.log("✓ Election will start in 24 hours, allowing time to add candidates");
   console.log();
 
-  // Note: We can't add candidates after election starts
-  // This is a demonstration limitation. In a real system, you'd schedule the start time
-  console.log("Note: Election starts immediately in this demo.");
-  console.log("In production, you would set a future start time to add candidates first.");
+  // Note: Election starts in 24 hours, so we can add candidates now
+  console.log("Adding candidates...");
+  await (await votingSystem.addCandidate(1, "John Smith")).wait();
+  console.log("✓ Candidate 1: John Smith");
+  
+  await (await votingSystem.addCandidate(1, "Jane Doe")).wait();
+  console.log("✓ Candidate 2: Jane Doe");
+  
+  await (await votingSystem.addCandidate(1, "Bob Johnson")).wait();
+  console.log("✓ Candidate 3: Bob Johnson");
   console.log();
 
   // Register voters
@@ -61,6 +69,15 @@ async function main() {
   console.log("Start:", new Date(Number(election.startTime) * 1000).toLocaleString());
   console.log("End:", new Date(Number(election.endTime) * 1000).toLocaleString());
   console.log("Candidates:", election.candidateCount.toString());
+  
+  // Display all candidates
+  if (election.candidateCount > 0) {
+    console.log("\nCandidate List:");
+    for (let i = 1; i <= election.candidateCount; i++) {
+      const candidate = await votingSystem.getCandidate(1, i);
+      console.log(`  ${i}. ${candidate.name} - ${candidate.voteCount} votes`);
+    }
+  }
   console.log();
 
   // Check voter registration
@@ -70,12 +87,13 @@ async function main() {
   console.log();
 
   console.log("=== Demo Complete ===");
-  console.log("\nTo test the full voting flow:");
-  console.log("1. Create an election with a future start time");
-  console.log("2. Add candidates before the election starts");
-  console.log("3. Register voters");
-  console.log("4. Let voters cast their votes during the election period");
-  console.log("5. View results after the election ends");
+  console.log("\nNext Steps:");
+  console.log("1. Wait for election to start (24 hours in this demo)");
+  console.log("2. Registered voters can cast their votes");
+  console.log("3. After 7 days, view results to see the winner");
+  console.log("\nTo simulate time passage in testing, use:");
+  console.log("  await network.provider.send('evm_increaseTime', [86400]); // Add 1 day");
+  console.log("  await network.provider.send('evm_mine');");
 }
 
 main()

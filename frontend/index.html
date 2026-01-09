@@ -243,6 +243,10 @@
                 <label>Description:</label>
                 <textarea id="electionDescription" placeholder="Election description..."></textarea>
                 
+                <label>Start Offset (hours):</label>
+                <input type="number" id="electionStartOffset" placeholder="24" min="0" value="24">
+                <small>Number of hours from now when election starts (allows time to add candidates)</small>
+                
                 <label>Duration (days):</label>
                 <input type="number" id="electionDuration" placeholder="7" min="1">
                 
@@ -318,7 +322,7 @@
         const CONTRACT_ABI = [
             "function owner() view returns (address)",
             "function electionCount() view returns (uint256)",
-            "function createElection(string memory _name, string memory _description, uint256 _durationInDays) returns (uint256)",
+            "function createElection(string memory _name, string memory _description, uint256 _startOffset, uint256 _durationInDays) returns (uint256)",
             "function addCandidate(uint256 _electionId, string memory _name)",
             "function registerVoter(uint256 _electionId, address _voter)",
             "function vote(uint256 _electionId, uint256 _candidateId)",
@@ -387,6 +391,7 @@
             try {
                 const name = document.getElementById('electionName').value;
                 const description = document.getElementById('electionDescription').value;
+                const startOffset = document.getElementById('electionStartOffset').value;
                 const duration = document.getElementById('electionDuration').value;
 
                 if (!contract) {
@@ -396,7 +401,7 @@
 
                 showSuccess('Creating election... Please wait for transaction confirmation.');
                 
-                const tx = await contract.createElection(name, description, duration);
+                const tx = await contract.createElection(name, description, startOffset, duration);
                 await tx.wait();
                 
                 const electionCount = await contract.electionCount();
