@@ -1,0 +1,45 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_28-49033f289365b0ce71d4a42a1364908da3a4b169",
+  "solcVersion": "0.8.28",
+  "solcLongVersion": "0.8.28+commit.7893614a",
+  "userSourceNameMap": {
+    "contracts/Voting.sol": "project/contracts/Voting.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "cancun",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode",
+            "evm.deployedBytecode",
+            "evm.methodIdentifiers",
+            "metadata"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/contracts/ElectionsManager.sol": {
+        "content": "// SPDX-License-Identifier: UNLICENSED\n\npragma solidity ^0.8.20;\n\nimport \"./Ownable.sol\";\n\ncontract ElectionsManager is Ownable {\n\t// Option type (formerly Candidate)\n\tstruct Option {\n\t\tuint id;\n\t\tstring text;\n\t\tuint voteCount;\n\t}\n\n\t// Quiz type (formerly Election)\n\tstruct Quiz {\n\t\tuint id;\n\t\tstring question;\n\t\taddress admin;\n\t\tuint startTime;\n\t\tuint endTime;\n\t\tbool ended;\n\t\tuint optionsCount;\n\t\tbool resultsRevealed;\n\t\tmapping(uint => Option) options;\n\t\tmapping(address => bool) voted;\n\t\tmapping(address => uint) votesBy;\n\t}\n\n\t// Storage\n\tmapping(uint => Quiz) private quizzes;\n\tuint public quizzesCount;\n\n\t// Events\n\tevent Voted(uint indexed quizId, uint indexed optionId, address voter);\n\tevent OptionAdded(uint indexed quizId, uint indexed optionId, string text);\n\tevent QuizCreated(uint indexed quizId, string question, address indexed admin, uint startTime, uint endTime);\n\tevent QuizEnded(uint indexed quizId);\n\tevent ResultsRevealed(uint indexed quizId);\n\n\t// Only admin or contract owner\n\tmodifier onlyAdminOrOwner(uint _quizId) {\n\t\trequire(_quizId > 0 && _quizId <= quizzesCount, \"Invalid quiz id.\");\n\t\tQuiz storage q = quizzes[_quizId];\n\t\trequire(msg.sender == q.admin || msg.sender == owner, \"Only quiz admin or owner allowed.\");\n\t\t_;\n\t}\n\n\t// Create a new quiz (only contract owner). Duration is in seconds.\n\tfunction createQuiz(string memory _question, address _admin, uint _durationSeconds) public onlyOwner returns (uint) {\n\t\trequire(_admin != address(0), \"Admin cannot be zero address.\");\n\t\trequire(_durationSeconds > 0, \"Duration must be > 0.\");\n\n\t\tquizzesCount++;\n\t\tQuiz storage q = quizzes[quizzesCount];\n\t\tq.id = quizzesCount;\n\t\tq.question = _question;\n\t\tq.admin = _admin;\n\t\tq.startTime = block.timestamp;\n\t\t // increase safety buffer so immediate subsequent txs don't see quiz as expired\n\t\tq.endTime = block.timestamp + _durationSeconds + 120;\n\t\tq.ended = false;\n\t\tq.optionsCount = 0;\n\t\tq.resultsRevealed = false;\n\n\t\temit QuizCreated(q.id, _question, _admin, q.startTime, q.endTime);\n\t\treturn q.id;\n\t}\n\n\t// Admin (or owner) can add an option to a specific quiz until it is explicitly ended\n\tfunction addOptionToQuiz(uint _quizId, string memory _text) public onlyAdminOrOwner(_quizId) {\n\t\tQuiz storage q = quizzes[_quizId];\n\t\trequire(!q.ended, \"Quiz ended; cannot add options.\");\n\n\t\tq.optionsCount++;\n\t\tq.options[q.optionsCount] = Option(q.optionsCount, _text, 0);\n\t\temit OptionAdded(_quizId, q.optionsCount, _text);\n\t}\n\n\t// Vote in a specific quiz (public, but single vote per address)\n\tfunction voteInQuiz(uint _quizId, uint _optionId) public {\n\t\trequire(_quizId > 0 && _quizId <= quizzesCount, \"Invalid quiz id.\");\n\t\tQuiz storage q = quizzes[_quizId];\n\n\t\trequire(block.timestamp >= q.startTime, \"Quiz has not started.\");\n\t\trequire(block.timestamp <= q.endTime, \"Quiz time over.\");\n\t\trequire(!q.ended, \"Quiz ended.\");\n\t\trequire(!q.voted[msg.sender], \"You have already voted.\");\n\t\trequire(_optionId > 0 && _optionId <= q.optionsCount, \"Invalid option id.\");\n\n\t\tq.voted[msg.sender] = true;\n\t\tq.votesBy[msg.sender] = _optionId;\n\t\tq.options[_optionId].voteCount++;\n\n\t\temit Voted(_quizId, _optionId, msg.sender);\n\t}\n\n\t// Anyone (admin/owner) can end a quiz after time passed; once ended it cannot be reopened\n\tfunction endQuiz(uint _quizId) public {\n\t\trequire(_quizId > 0 && _quizId <= quizzesCount, \"Invalid quiz id.\");\n\t\tQuiz storage q = quizzes[_quizId];\n\t\trequire(msg.sender == q.admin || msg.sender == owner, \"Only admin or owner can end quiz.\");\n\t\trequire(!q.ended, \"Quiz already ended.\");\n\t\trequire(block.timestamp >= q.endTime, \"Cannot end before end time.\");\n\n\t\tq.ended = true;\n\t\temit QuizEnded(_quizId);\n\t}\n\n\t// Admin or owner reveals results; once revealed, voter->choice lookup becomes visible to callers (or owner/admin)\n\tfunction revealResults(uint _quizId) public onlyAdminOrOwner(_quizId) {\n\t\tQuiz storage q = quizzes[_quizId];\n\t\t// allow reveal only after quiz end time or if the quiz was explicitly ended\n\t\trequire(q.ended || block.timestamp >= q.endTime, \"Cannot reveal before quiz end.\");\n\t\tq.resultsRevealed = true;\n\t\temit ResultsRevealed(_quizId);\n\t}\n\n\t// View helpers\n\n\tfunction getOption(uint _quizId, uint _optionId) public view returns (uint id, string memory text, uint voteCount) {\n\t\trequire(_quizId > 0 && _quizId <= quizzesCount, \"Invalid quiz id.\");\n\t\tQuiz storage q = quizzes[_quizId];\n\t\trequire(_optionId > 0 && _optionId <= q.optionsCount, \"Invalid option id.\");\n\t\tOption storage o = q.options[_optionId];\n\t\treturn (o.id, o.text, o.voteCount);\n\t}\n\n\tfunction getOptionsCount(uint _quizId) public view returns (uint) {\n\t\trequire(_quizId > 0 && _quizId <= quizzesCount, \"Invalid quiz id.\");\n\t\treturn quizzes[_quizId].optionsCount;\n\t}\n\n\t// return the configured endTime for a quiz (useful for tests/clients)\n\tfunction getQuizEndTime(uint _quizId) public view returns (uint) {\n\t\trequire(_quizId > 0 && _quizId <= quizzesCount, \"Invalid quiz id.\");\n\t\treturn quizzes[_quizId].endTime;\n\t}\n\n\tfunction hasVoted(uint _quizId, address _voter) public view returns (bool) {\n\t\trequire(_quizId > 0 && _quizId <= quizzesCount, \"Invalid quiz id.\");\n\t\treturn quizzes[_quizId].voted[_voter];\n\t}\n\n\tfunction getVoterChoice(uint _quizId, address _voter) public view returns (uint) {\n\t\trequire(_quizId > 0 && _quizId <= quizzesCount, \"Invalid quiz id.\");\n\t\tQuiz storage q = quizzes[_quizId];\n\t\trequire(q.resultsRevealed || msg.sender == owner || msg.sender == q.admin, \"Results not revealed.\");\n\t\treturn q.votesBy[_voter];\n\t}\n\n\tfunction getTotalVotes(uint _quizId) public view returns (uint total) {\n\t\trequire(_quizId > 0 && _quizId <= quizzesCount, \"Invalid quiz id.\");\n\t\tQuiz storage q = quizzes[_quizId];\n\t\tfor (uint i = 1; i <= q.optionsCount; i++) {\n\t\t\ttotal += q.options[i].voteCount;\n\t\t}\n\t}\n\n\t// Internal helper to check ended state (if time passed we treat as ended for operations)\n\tfunction _isEnded(Quiz storage q) internal view returns (bool) {\n\t\tif (q.ended) return true;\n\t\tif (block.timestamp > q.endTime) return true;\n\t\treturn false;\n\t}\n}\n"
+      },
+      "project/contracts/Ownable.sol": {
+        "content": "// SPDX-License-Identifier: UNLICENSED\n\npragma solidity ^0.8.20;\n\ncontract Ownable {\n\t// Owner state and transfer event\n\taddress public owner;\n\tevent OwnershipTransferred(address indexed previousOwner, address indexed newOwner);\n\n\t// Set deployer as initial owner\n\tconstructor() {\n\t\towner = msg.sender;\n\t}\n\n\t// Restrict to owner\n\tmodifier onlyOwner() {\n\t\trequire(msg.sender == owner, \"Only owner can perform this action.\");\n\t\t_;\n\t}\n\n\t// Transfer ownership\n\tfunction transferOwnership(address _newOwner) public onlyOwner {\n\t\trequire(_newOwner != address(0), \"New owner is the zero address.\");\n\t\taddress previous = owner;\n\t\towner = _newOwner;\n\t\temit OwnershipTransferred(previous, _newOwner);\n\t}\n}\n"
+      },
+      "project/contracts/Voting.sol": {
+        "content": "// SPDX-License-Identifier: UNLICENSED\n\npragma solidity ^0.8.20;\n\nimport \"./ElectionsManager.sol\";\n\ncontract Voting is ElectionsManager {\n}"
+      }
+    }
+  }
+}
