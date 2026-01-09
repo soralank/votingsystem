@@ -7,6 +7,7 @@
     "test": "hardhat test",
     "compile": "hardhat compile",
     "deploy": "hardhat run scripts/deploy.js",
+    "demo": "hardhat run scripts/demo.js",
     "node": "hardhat node"
   },
   "keywords": [
