@@ -1,0 +1,26 @@
+{
+  "name": "votingsystem",
+  "version": "1.0.0",
+  "description": "A decentralized voting system built on blockchain technology using Solidity",
+  "main": "index.js",
+  "scripts": {
+    "test": "hardhat test",
+    "compile": "hardhat compile",
+    "deploy": "hardhat run scripts/deploy.js",
+    "demo": "hardhat run scripts/demo.js",
+    "node": "hardhat node"
+  },
+  "keywords": [
+    "blockchain",
+    "voting",
+    "solidity",
+    "ethereum",
+    "smart-contracts"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^3.0.0",
+    "hardhat": "^2.19.0"
+  }
+}

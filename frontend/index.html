@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blockchain Voting System</title>
+    <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 40px;
+        }
+
+        h1 {
+            color: #667eea;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+
+        .status {
+            background: #f0f4ff;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            border-left: 4px solid #667eea;
+        }
+
+        .status p {
+            margin: 5px 0;
+            color: #333;
+        }
+
+        .status strong {
+            color: #667eea;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            padding: 25px;
+            background: #f9fafb;
+            border-radius: 15px;
+        }
+
+        .section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-right: 10px;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .result {
+            background: #e8f5e9;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border-left: 4px solid #4caf50;
+        }
+
+        .error {
+            background: #ffebee;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border-left: 4px solid #f44336;
+            color: #c62828;
+        }
+
+        .election-list {
+            display: grid;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .election-item {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            border: 2px solid #e0e0e0;
+        }
+
+        .election-item h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .candidate-list {
+            margin-top: 15px;
+        }
+
+        .candidate-item {
+            padding: 10px;
+            background: #f5f5f5;
+            margin: 8px 0;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .vote-count {
+            background: #667eea;
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+        }
+
+        .connect-button {
+            display: block;
+            margin: 0 auto 30px;
+            font-size: 18px;
+            padding: 15px 40px;
+        }
+
+        .warning {
+            background: #fff3e0;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #ff9800;
+            color: #e65100;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🗳️ Blockchain Voting System</h1>
+        <p class="subtitle">A decentralized voting platform powered by Ethereum Smart Contracts</p>
+
+        <div class="warning" id="warning">
+            <strong>⚠️ Setup Required:</strong> Please connect to a local Ethereum network (Hardhat) and deploy the VotingSystem contract first.
+        </div>
+
+        <button class="connect-button" onclick="connectWallet()">Connect Wallet</button>
+
+        <div class="status" id="status" style="display:none;">
+            <p><strong>Network:</strong> <span id="network">Not connected</span></p>
+            <p><strong>Account:</strong> <span id="account">Not connected</span></p>
+            <p><strong>Contract:</strong> <span id="contract">Not deployed</span></p>
+            <p><strong>Total Elections:</strong> <span id="electionCount">0</span></p>
+        </div>
+
+        <!-- Owner Actions -->
+        <div class="section" id="ownerSection" style="display:none;">
+            <h2>📋 Owner Actions</h2>
+            
+            <div class="form-group">
+                <label>Contract Address:</label>
+                <input type="text" id="contractAddress" placeholder="Enter deployed contract address">
+                <button onclick="loadContract()">Load Contract</button>
+            </div>
+
+            <div class="form-group">
+                <h3>Create New Election</h3>
+                <label>Election Name:</label>
+                <input type="text" id="electionName" placeholder="e.g., Presidential Election 2024">
+                
+                <label>Description:</label>
+                <textarea id="electionDescription" placeholder="Election description..."></textarea>
+                
+                <label>Start Offset (hours):</label>
+                <input type="number" id="electionStartOffset" placeholder="24" min="0" value="24">
+                <small>Number of hours from now when election starts (allows time to add candidates)</small>
+                
+                <label>Duration (days):</label>
+                <input type="number" id="electionDuration" placeholder="7" min="1">
+                
+                <button onclick="createElection()">Create Election</button>
+            </div>
+
+            <div class="form-group">
+                <h3>Add Candidate</h3>
+                <label>Election ID:</label>
+                <input type="number" id="candidateElectionId" placeholder="1" min="1">
+                
+                <label>Candidate Name:</label>
+                <input type="text" id="candidateName" placeholder="John Doe">
+                
+                <button onclick="addCandidate()">Add Candidate</button>
+            </div>
+
+            <div class="form-group">
+                <h3>Register Voter</h3>
+                <label>Election ID:</label>
+                <input type="number" id="voterElectionId" placeholder="1" min="1">
+                
+                <label>Voter Address:</label>
+                <input type="text" id="voterAddress" placeholder="0x...">
+                
+                <button onclick="registerVoter()">Register Voter</button>
+            </div>
+        </div>
+
+        <!-- Voter Actions -->
+        <div class="section" id="voterSection" style="display:none;">
+            <h2>🗳️ Cast Your Vote</h2>
+            
+            <div class="form-group">
+                <label>Election ID:</label>
+                <input type="number" id="voteElectionId" placeholder="1" min="1">
+                
+                <label>Candidate ID:</label>
+                <input type="number" id="voteCandidateId" placeholder="1" min="1">
+                
+                <button onclick="castVote()">Vote</button>
+            </div>
+
+            <div class="form-group">
+                <button onclick="checkRegistration()">Check My Registration Status</button>
+                <button onclick="checkVoteStatus()">Check If I Voted</button>
+            </div>
+        </div>
+
+        <!-- View Elections -->
+        <div class="section">
+            <h2>📊 View Elections</h2>
+            
+            <div class="form-group">
+                <label>Election ID:</label>
+                <input type="number" id="viewElectionId" placeholder="1" min="1">
+                <button onclick="viewElection()">View Election Details</button>
+                <button onclick="viewResults()">View Results</button>
+            </div>
+
+            <div id="electionDetails"></div>
+        </div>
+
+        <div id="output"></div>
+    </div>
+
+    <script>
+        let provider;
+        let signer;
+        let contract;
+        let userAddress;
+
+        const CONTRACT_ABI = [
+            "function owner() view returns (address)",
+            "function electionCount() view returns (uint256)",
+            "function createElection(string memory _name, string memory _description, uint256 _startOffset, uint256 _durationInDays) returns (uint256)",
+            "function addCandidate(uint256 _electionId, string memory _name)",
+            "function registerVoter(uint256 _electionId, address _voter)",
+            "function vote(uint256 _electionId, uint256 _candidateId)",
+            "function getElection(uint256 _electionId) view returns (uint256 id, string memory name, string memory description, uint256 startTime, uint256 endTime, uint256 candidateCount)",
+            "function getCandidate(uint256 _electionId, uint256 _candidateId) view returns (uint256 id, string memory name, uint256 voteCount)",
+            "function hasVoted(uint256 _electionId, address _voter) view returns (bool)",
+            "function isRegisteredVoter(uint256 _electionId, address _voter) view returns (bool)",
+            "function getWinner(uint256 _electionId) view returns (uint256 winnerId, string memory winnerName, uint256 winningVoteCount)",
+            "event ElectionCreated(uint256 indexed electionId, string name, uint256 startTime, uint256 endTime)",
+            "event VoteCasted(uint256 indexed electionId, address indexed voter, uint256 candidateId)"
+        ];
+
+        async function connectWallet() {
+            try {
+                if (typeof window.ethereum === 'undefined') {
+                    showError('Please install MetaMask or another Web3 wallet!');
+                    return;
+                }
+
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                await provider.send("eth_requestAccounts", []);
+                signer = provider.getSigner();
+                userAddress = await signer.getAddress();
+
+                const network = await provider.getNetwork();
+                
+                document.getElementById('network').textContent = network.name + ' (Chain ID: ' + network.chainId + ')';
+                document.getElementById('account').textContent = userAddress.substring(0, 10) + '...';
+                document.getElementById('status').style.display = 'block';
+                document.getElementById('ownerSection').style.display = 'block';
+                document.getElementById('voterSection').style.display = 'block';
+
+                showSuccess('Wallet connected successfully!');
+            } catch (error) {
+                showError('Failed to connect wallet: ' + error.message);
+            }
+        }
+
+        async function loadContract() {
+            try {
+                const address = document.getElementById('contractAddress').value.trim();
+                if (!address) {
+                    showError('Please enter a contract address');
+                    return;
+                }
+
+                contract = new ethers.Contract(address, CONTRACT_ABI, signer);
+                
+                const electionCount = await contract.electionCount();
+                const owner = await contract.owner();
+                
+                document.getElementById('contract').textContent = address.substring(0, 10) + '...';
+                document.getElementById('electionCount').textContent = electionCount.toString();
+                
+                showSuccess('Contract loaded! Total elections: ' + electionCount.toString());
+                
+                if (owner.toLowerCase() === userAddress.toLowerCase()) {
+                    showSuccess('You are the contract owner!');
+                }
+            } catch (error) {
+                showError('Failed to load contract: ' + error.message);
+            }
+        }
+
+        async function createElection() {
+            try {
+                const name = document.getElementById('electionName').value;
+                const description = document.getElementById('electionDescription').value;
+                const startOffset = document.getElementById('electionStartOffset').value;
+                const duration = document.getElementById('electionDuration').value;
+
+                if (!contract) {
+                    showError('Please load the contract first');
+                    return;
+                }
+
+                showSuccess('Creating election... Please wait for transaction confirmation.');
+                
+                const tx = await contract.createElection(name, description, startOffset, duration);
+                await tx.wait();
+                
+                const electionCount = await contract.electionCount();
+                document.getElementById('electionCount').textContent = electionCount.toString();
+                
+                showSuccess('Election created successfully! Election ID: ' + electionCount.toString());
+            } catch (error) {
+                showError('Failed to create election: ' + error.message);
+            }
+        }
+
+        async function addCandidate() {
+            try {
+                const electionId = document.getElementById('candidateElectionId').value;
+                const name = document.getElementById('candidateName').value;
+
+                if (!contract) {
+                    showError('Please load the contract first');
+                    return;
+                }
+
+                showSuccess('Adding candidate... Please wait for transaction confirmation.');
+                
+                const tx = await contract.addCandidate(electionId, name);
+                await tx.wait();
+                
+                showSuccess('Candidate added successfully!');
+            } catch (error) {
+                showError('Failed to add candidate: ' + error.message);
+            }
+        }
+
+        async function registerVoter() {
+            try {
+                const electionId = document.getElementById('voterElectionId').value;
+                const voterAddress = document.getElementById('voterAddress').value;
+
+                if (!contract) {
+                    showError('Please load the contract first');
+                    return;
+                }
+
+                showSuccess('Registering voter... Please wait for transaction confirmation.');
+                
+                const tx = await contract.registerVoter(electionId, voterAddress);
+                await tx.wait();
+                
+                showSuccess('Voter registered successfully!');
+            } catch (error) {
+                showError('Failed to register voter: ' + error.message);
+            }
+        }
+
+        async function castVote() {
+            try {
+                const electionId = document.getElementById('voteElectionId').value;
+                const candidateId = document.getElementById('voteCandidateId').value;
+
+                if (!contract) {
+                    showError('Please load the contract first');
+                    return;
+                }
+
+                showSuccess('Casting vote... Please wait for transaction confirmation.');
+                
+                const tx = await contract.vote(electionId, candidateId);
+                await tx.wait();
+                
+                showSuccess('Vote cast successfully!');
+            } catch (error) {
+                showError('Failed to cast vote: ' + error.message);
+            }
+        }
+
+        async function viewElection() {
+            try {
+                const electionId = document.getElementById('viewElectionId').value;
+
+                if (!contract) {
+                    showError('Please load the contract first');
+                    return;
+                }
+
+                const election = await contract.getElection(electionId);
+                
+                let html = '<div class="result">';
+                html += '<h3>Election #' + election.id.toString() + '</h3>';
+                html += '<p><strong>Name:</strong> ' + election.name + '</p>';
+                html += '<p><strong>Description:</strong> ' + election.description + '</p>';
+                html += '<p><strong>Start Time:</strong> ' + new Date(election.startTime.toNumber() * 1000).toLocaleString() + '</p>';
+                html += '<p><strong>End Time:</strong> ' + new Date(election.endTime.toNumber() * 1000).toLocaleString() + '</p>';
+                html += '<p><strong>Candidates:</strong> ' + election.candidateCount.toString() + '</p>';
+                html += '<h4>Candidates:</h4>';
+                
+                for (let i = 1; i <= election.candidateCount; i++) {
+                    const candidate = await contract.getCandidate(electionId, i);
+                    html += '<div class="candidate-item">';
+                    html += '<span>' + i + '. ' + candidate.name + '</span>';
+                    html += '<span class="vote-count">' + candidate.voteCount.toString() + ' votes</span>';
+                    html += '</div>';
+                }
+                
+                html += '</div>';
+                
+                document.getElementById('electionDetails').innerHTML = html;
+            } catch (error) {
+                showError('Failed to view election: ' + error.message);
+            }
+        }
+
+        async function viewResults() {
+            try {
+                const electionId = document.getElementById('viewElectionId').value;
+
+                if (!contract) {
+                    showError('Please load the contract first');
+                    return;
+                }
+
+                const winner = await contract.getWinner(electionId);
+                
+                let html = '<div class="result">';
+                html += '<h3>Election Results</h3>';
+                html += '<p><strong>Winner:</strong> ' + winner.winnerName + '</p>';
+                html += '<p><strong>Votes:</strong> ' + winner.winningVoteCount.toString() + '</p>';
+                html += '</div>';
+                
+                document.getElementById('electionDetails').innerHTML = html;
+            } catch (error) {
+                showError('Failed to get results: ' + error.message);
+            }
+        }
+
+        async function checkRegistration() {
+            try {
+                const electionId = document.getElementById('voteElectionId').value;
+
+                if (!contract) {
+                    showError('Please load the contract first');
+                    return;
+                }
+
+                const isRegistered = await contract.isRegisteredVoter(electionId, userAddress);
+                
+                if (isRegistered) {
+                    showSuccess('You are registered to vote in this election!');
+                } else {
+                    showError('You are not registered for this election.');
+                }
+            } catch (error) {
+                showError('Failed to check registration: ' + error.message);
+            }
+        }
+
+        async function checkVoteStatus() {
+            try {
+                const electionId = document.getElementById('voteElectionId').value;
+
+                if (!contract) {
+                    showError('Please load the contract first');
+                    return;
+                }
+
+                const voted = await contract.hasVoted(electionId, userAddress);
+                
+                if (voted) {
+                    showSuccess('You have already voted in this election.');
+                } else {
+                    showSuccess('You have not voted yet in this election.');
+                }
+            } catch (error) {
+                showError('Failed to check vote status: ' + error.message);
+            }
+        }
+
+        function showSuccess(message) {
+            const output = document.getElementById('output');
+            output.innerHTML = '<div class="result">' + message + '</div>';
+            setTimeout(() => output.innerHTML = '', 5000);
+        }
+
+        function showError(message) {
+            const output = document.getElementById('output');
+            output.innerHTML = '<div class="error">' + message + '</div>';
+        }
+    </script>
+</body>
+</html>
