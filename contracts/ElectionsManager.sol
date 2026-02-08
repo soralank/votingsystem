@@ -1,166 +1,252 @@
-// SPDX-License-Identifier: UNLICENSED
-
+// SPDX-License-Identifier: ANKIT.SORAL
 pragma solidity ^0.8.20;
 
-import "./Ownable.sol";
+contract ElectionsManager {
+    address public owner;
+    uint public pollsCount;
 
-contract ElectionsManager is Ownable {
-	// Option type (formerly Candidate)
-	struct Option {
-		uint id;
-		string text;
-		uint voteCount;
-	}
+    // NEW: prevent duplicate poll titles
+    mapping(string => bool) public pollTitles;
 
-	// Quiz type (formerly Election)
-	struct Quiz {
-		uint id;
-		string question;
-		address admin;
-		uint startTime;
-		uint endTime;
-		bool ended;
-		uint optionsCount;
-		bool resultsRevealed;
-		mapping(uint => Option) options;
-		mapping(address => bool) voted;
-		mapping(address => uint) votesBy;
-	}
+    // NEW: prevent duplicate option names within a poll
+    mapping(uint => mapping(string => bool)) public pollOptionNames;
 
-	// Storage
-	mapping(uint => Quiz) private quizzes;
-	uint public quizzesCount;
+    struct Option {
+        uint id;
+        string name;
+        uint votes;
+    }
 
-	// Events
-	event Voted(uint indexed quizId, uint indexed optionId, address voter);
-	event OptionAdded(uint indexed quizId, uint indexed optionId, string text);
-	event QuizCreated(uint indexed quizId, string question, address indexed admin, uint startTime, uint endTime);
-	event QuizEnded(uint indexed quizId);
-	event ResultsRevealed(uint indexed quizId);
+    struct Poll {
+        string title;
+        address admin;
+        uint endTime;
+        bool revealed;
+        bool ended;
+        uint totalVotes;
+        uint optionsCount;
+        bool exists;
+    }
 
-	// Only admin or contract owner
-	modifier onlyAdminOrOwner(uint _quizId) {
-		require(_quizId > 0 && _quizId <= quizzesCount, "Invalid quiz id.");
-		Quiz storage q = quizzes[_quizId];
-		require(msg.sender == q.admin || msg.sender == owner, "Only quiz admin or owner allowed.");
-		_;
-	}
+    // pollId => Poll
+    mapping(uint => Poll) public polls;
+    // pollId => optionId => Option
+    mapping(uint => mapping(uint => Option)) public options;
+    // pollId => voter => choice (0 = none)
+    mapping(uint => mapping(address => uint)) public voterChoice;
+    // pollId => voter => has voted
+    mapping(uint => mapping(address => bool)) public hasVoted;
+    // pollId => voter => is authorized to vote
+    mapping(uint => mapping(address => bool)) public authorizedVoters;
 
-	// Create a new quiz (only contract owner). Duration is in seconds.
-	function createQuiz(string memory _question, address _admin, uint _durationSeconds) public onlyOwner returns (uint) {
-		require(_admin != address(0), "Admin cannot be zero address.");
-		require(_durationSeconds > 0, "Duration must be > 0.");
+    event PollCreated(uint indexed pollId, string title, address admin, uint endTime);
+    event OptionAdded(uint indexed pollId, uint indexed optionId, string name);
+    event Voted(uint indexed pollId, address voter, uint optionId);
+    event Revealed(uint indexed pollId);
+    event Ended(uint indexed pollId);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event VoterAdded(uint indexed pollId, address voter);
+    event VoterRemoved(uint indexed pollId, address voter);
 
-		quizzesCount++;
-		Quiz storage q = quizzes[quizzesCount];
-		q.id = quizzesCount;
-		q.question = _question;
-		q.admin = _admin;
-		q.startTime = block.timestamp;
-		 // increase safety buffer so immediate subsequent txs don't see quiz as expired
-		q.endTime = block.timestamp + _durationSeconds + 120;
-		q.ended = false;
-		q.optionsCount = 0;
-		q.resultsRevealed = false;
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only owner can perform this action.");
+        _;
+    }
 
-		emit QuizCreated(q.id, _question, _admin, q.startTime, q.endTime);
-		return q.id;
-	}
+    modifier onlyAdminOrOwner(uint pollId) {
+        require(msg.sender == polls[pollId].admin || msg.sender == owner, "Only poll admin or owner allowed.");
+        _;
+    }
 
-	// Admin (or owner) can add an option to a specific quiz until it is explicitly ended
-	function addOptionToQuiz(uint _quizId, string memory _text) public onlyAdminOrOwner(_quizId) {
-		Quiz storage q = quizzes[_quizId];
-		require(!q.ended, "Quiz ended; cannot add options.");
+    constructor() {
+        owner = msg.sender;
+    }
 
-		q.optionsCount++;
-		q.options[q.optionsCount] = Option(q.optionsCount, _text, 0);
-		emit OptionAdded(_quizId, q.optionsCount, _text);
-	}
+    function transferOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "new owner is zero address");
+        emit OwnershipTransferred(owner, newOwner);
+        owner = newOwner;
+    }
 
-	// Vote in a specific quiz (public, but single vote per address)
-	function voteInQuiz(uint _quizId, uint _optionId) public {
-		require(_quizId > 0 && _quizId <= quizzesCount, "Invalid quiz id.");
-		Quiz storage q = quizzes[_quizId];
+    function createPoll(string calldata title, address admin, uint durationSeconds) external onlyOwner returns (uint) {
+        require(admin != address(0), "admin zero");
+        // NEW: check for duplicate title
+        require(!pollTitles[title], "Poll title already exists.");
+        pollsCount += 1;
+        uint pid = pollsCount;
+        Poll storage p = polls[pid];
+        p.title = title;
+        p.admin = admin;
+        p.endTime = block.timestamp + durationSeconds;
+        p.revealed = false;
+        p.ended = false;
+        p.totalVotes = 0;
+        p.optionsCount = 0;
+        p.exists = true;
+        // NEW: mark title as used
+        pollTitles[title] = true;
 
-		require(block.timestamp >= q.startTime, "Quiz has not started.");
-		require(block.timestamp <= q.endTime, "Quiz time over.");
-		require(!q.ended, "Quiz ended.");
-		require(!q.voted[msg.sender], "You have already voted.");
-		require(_optionId > 0 && _optionId <= q.optionsCount, "Invalid option id.");
+        emit PollCreated(pid, title, admin, p.endTime);
+        return pid;
+    }
 
-		q.voted[msg.sender] = true;
-		q.votesBy[msg.sender] = _optionId;
-		q.options[_optionId].voteCount++;
+    function addOptionToPoll(uint pollId, string calldata name) external {
+        require(polls[pollId].exists, "Poll does not exist.");
+        require(!polls[pollId].ended, "Poll ended; cannot add options.");
+        require(msg.sender == polls[pollId].admin || msg.sender == owner, "Only poll admin or owner allowed.");
+        // NEW: check for duplicate option name in this poll
+        require(!pollOptionNames[pollId][name], "Option name already exists in this poll.");
 
-		emit Voted(_quizId, _optionId, msg.sender);
-	}
+        Poll storage p = polls[pollId];
+        p.optionsCount += 1;
+        uint oid = p.optionsCount;
+        options[pollId][oid] = Option({ id: oid, name: name, votes: 0 });
+        // NEW: mark option name as used in this poll
+        pollOptionNames[pollId][name] = true;
 
-	// Anyone (admin/owner) can end a quiz after time passed; once ended it cannot be reopened
-	function endQuiz(uint _quizId) public {
-		require(_quizId > 0 && _quizId <= quizzesCount, "Invalid quiz id.");
-		Quiz storage q = quizzes[_quizId];
-		require(msg.sender == q.admin || msg.sender == owner, "Only admin or owner can end quiz.");
-		require(!q.ended, "Quiz already ended.");
-		require(block.timestamp >= q.endTime, "Cannot end before end time.");
+        emit OptionAdded(pollId, oid, name);
+    }
 
-		q.ended = true;
-		emit QuizEnded(_quizId);
-	}
+    function addVoter(uint pollId, address voter) external onlyAdminOrOwner(pollId) {
+        require(polls[pollId].exists, "Poll does not exist.");
+        require(!polls[pollId].ended, "Poll ended; cannot add voters.");
+        require(voter != address(0), "Invalid voter address.");
+        require(!authorizedVoters[pollId][voter], "Voter already authorized.");
 
-	// Admin or owner reveals results; once revealed, voter->choice lookup becomes visible to callers (or owner/admin)
-	function revealResults(uint _quizId) public onlyAdminOrOwner(_quizId) {
-		Quiz storage q = quizzes[_quizId];
-		// allow reveal only after quiz end time or if the quiz was explicitly ended
-		require(q.ended || block.timestamp >= q.endTime, "Cannot reveal before quiz end.");
-		q.resultsRevealed = true;
-		emit ResultsRevealed(_quizId);
-	}
+        authorizedVoters[pollId][voter] = true;
+        emit VoterAdded(pollId, voter);
+    }
 
-	// View helpers
+    function addVoters(uint pollId, address[] calldata voters) external onlyAdminOrOwner(pollId) {
+        require(polls[pollId].exists, "Poll does not exist.");
+        require(!polls[pollId].ended, "Poll ended; cannot add voters.");
 
-	function getOption(uint _quizId, uint _optionId) public view returns (uint id, string memory text, uint voteCount) {
-		require(_quizId > 0 && _quizId <= quizzesCount, "Invalid quiz id.");
-		Quiz storage q = quizzes[_quizId];
-		require(_optionId > 0 && _optionId <= q.optionsCount, "Invalid option id.");
-		Option storage o = q.options[_optionId];
-		return (o.id, o.text, o.voteCount);
-	}
+        for(uint i = 0; i < voters.length; i++) {
+            address voter = voters[i];
+            require(voter != address(0), "Invalid voter address.");
+            if (!authorizedVoters[pollId][voter]) {
+                authorizedVoters[pollId][voter] = true;
+                emit VoterAdded(pollId, voter);
+            }
+        }
+    }
 
-	function getOptionsCount(uint _quizId) public view returns (uint) {
-		require(_quizId > 0 && _quizId <= quizzesCount, "Invalid quiz id.");
-		return quizzes[_quizId].optionsCount;
-	}
+    function removeVoter(uint pollId, address voter) external onlyAdminOrOwner(pollId) {
+        require(polls[pollId].exists, "Poll does not exist.");
+        require(!polls[pollId].ended, "Poll ended; cannot remove voters.");
+        require(authorizedVoters[pollId][voter], "Voter not authorized.");
+        require(!hasVoted[pollId][voter], "Cannot remove voter who already voted.");
 
-	// return the configured endTime for a quiz (useful for tests/clients)
-	function getQuizEndTime(uint _quizId) public view returns (uint) {
-		require(_quizId > 0 && _quizId <= quizzesCount, "Invalid quiz id.");
-		return quizzes[_quizId].endTime;
-	}
+        authorizedVoters[pollId][voter] = false;
+        emit VoterRemoved(pollId, voter);
+    }
 
-	function hasVoted(uint _quizId, address _voter) public view returns (bool) {
-		require(_quizId > 0 && _quizId <= quizzesCount, "Invalid quiz id.");
-		return quizzes[_quizId].voted[_voter];
-	}
+    function getPollsCount() external view returns (uint) {
+        return pollsCount;
+    }
 
-	function getVoterChoice(uint _quizId, address _voter) public view returns (uint) {
-		require(_quizId > 0 && _quizId <= quizzesCount, "Invalid quiz id.");
-		Quiz storage q = quizzes[_quizId];
-		require(q.resultsRevealed || msg.sender == owner || msg.sender == q.admin, "Results not revealed.");
-		return q.votesBy[_voter];
-	}
+    function getOptionsCount(uint pollId) external view returns (uint) {
+        return polls[pollId].optionsCount;
+    }
 
-	function getTotalVotes(uint _quizId) public view returns (uint total) {
-		require(_quizId > 0 && _quizId <= quizzesCount, "Invalid quiz id.");
-		Quiz storage q = quizzes[_quizId];
-		for (uint i = 1; i <= q.optionsCount; i++) {
-			total += q.options[i].voteCount;
-		}
-	}
+    function getOption(uint pollId, uint optionId) external view returns (uint, string memory, uint) {
+        Option storage o = options[pollId][optionId];
+        return (o.id, o.name, o.votes);
+    }
 
-	// Internal helper to check ended state (if time passed we treat as ended for operations)
-	function _isEnded(Quiz storage q) internal view returns (bool) {
-		if (q.ended) return true;
-		if (block.timestamp > q.endTime) return true;
-		return false;
-	}
+    function voteInPoll(uint pollId, uint optionId) external {
+        require(polls[pollId].exists, "Poll does not exist.");
+        require(authorizedVoters[pollId][msg.sender], "Not authorized to vote in this poll.");
+        Poll storage p = polls[pollId];
+        require(block.timestamp <= p.endTime, "Poll time over.");
+        require(!p.ended, "Poll ended; cannot vote.");
+        require(optionId > 0 && optionId <= p.optionsCount, "Invalid option.");
+        require(!hasVoted[pollId][msg.sender], "You have already voted.");
+
+        hasVoted[pollId][msg.sender] = true;
+        voterChoice[pollId][msg.sender] = optionId;
+        options[pollId][optionId].votes += 1;
+        p.totalVotes += 1;
+
+        emit Voted(pollId, msg.sender, optionId);
+    }
+
+    function getTotalVotes(uint pollId) external view returns (uint) {
+        return polls[pollId].totalVotes;
+    }
+
+    function getVoterChoice(uint pollId, address voter) external view returns (uint) {
+        Poll storage p = polls[pollId];
+        if (!p.revealed) {
+            if (msg.sender != p.admin && msg.sender != owner) {
+                revert("Results not revealed.");
+            }
+        }
+        return voterChoice[pollId][voter];
+    }
+
+    function getPollEndTime(uint pollId) external view returns (uint) {
+        return polls[pollId].endTime;
+    }
+
+    function hasVoterVoted(uint pollId, address voter) external view returns (bool) {
+        return hasVoted[pollId][voter];
+    }
+
+    function isVoterAuthorized(uint pollId, address voter) external view returns (bool) {
+        return authorizedVoters[pollId][voter];
+    }
+
+    function isPollActive(uint pollId) external view returns (bool) {
+        require(polls[pollId].exists, "Poll does not exist.");
+        Poll storage p = polls[pollId];
+        return !p.ended && block.timestamp <= p.endTime;
+    }
+
+    function getWinner(uint pollId) external view returns (uint winningOptionId, string memory winningOptionName, uint winningVotes) {
+        require(polls[pollId].exists, "Poll does not exist.");
+        Poll storage p = polls[pollId];
+        require(p.revealed || msg.sender == p.admin || msg.sender == owner, "Results not revealed.");
+
+        uint maxVotes = 0;
+        uint winnerId = 0;
+
+        for(uint i = 1; i <= p.optionsCount; i++) {
+            if(options[pollId][i].votes > maxVotes) {
+                maxVotes = options[pollId][i].votes;
+                winnerId = i;
+            }
+        }
+
+        if(winnerId > 0) {
+            return (winnerId, options[pollId][winnerId].name, maxVotes);
+        }
+
+        return (0, "", 0);
+    }
+
+    function revealResults(uint pollId) external {
+        require(polls[pollId].exists, "Poll does not exist.");
+        require(msg.sender == polls[pollId].admin || msg.sender == owner, "Only poll admin or owner allowed.");
+        require(block.timestamp > polls[pollId].endTime, "Cannot reveal before poll end.");
+        polls[pollId].revealed = true;
+        emit Revealed(pollId);
+    }
+
+    function endPoll(uint pollId) external {
+        require(polls[pollId].exists, "Poll does not exist.");
+        require(msg.sender == polls[pollId].admin || msg.sender == owner, "Only poll admin or owner allowed.");
+        require(block.timestamp > polls[pollId].endTime, "Cannot end before end time.");
+        polls[pollId].ended = true;
+        emit Ended(pollId);
+    }
+
+    // clear revert reasons for unsupported interactions (helps debugging / tooling)
+    receive() external payable {
+        revert("Contract does not accept plain ether.");
+    }
+
+    fallback() external payable {
+        revert("Unknown function called.");
+    }
 }

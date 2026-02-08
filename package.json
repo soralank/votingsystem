@@ -22,5 +22,8 @@
     "mocha": "^11.7.5",
     "typescript": "~5.8.0",
     "viem": "^2.44.0"
+  },
+  "dependencies": {
+    "lite-server": "^2.6.1"
   }
 }
