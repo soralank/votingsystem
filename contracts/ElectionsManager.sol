@@ -3,7 +3,16 @@ pragma solidity ^0.8.20;
 
 contract ElectionsManager {
     address public owner;
+    address public pendingOwner;
     uint public pollsCount;
+
+    // Security limits to prevent DoS attacks
+    uint public constant MAX_OPTIONS = 100;
+    uint public constant MAX_VOTERS_BATCH = 50;
+    
+    // Timestamp manipulation mitigation
+    uint public constant MIN_POLL_DURATION = 300; // 5 minutes minimum
+    uint public constant TIME_BUFFER = 30; // 30 second buffer for timestamp variance
 
     // NEW: prevent duplicate poll titles
     mapping(string => bool) public pollTitles;
@@ -30,10 +39,10 @@ contract ElectionsManager {
 
     // pollId => Poll
     mapping(uint => Poll) public polls;
-    // pollId => optionId => Option
-    mapping(uint => mapping(uint => Option)) public options;
-    // pollId => voter => choice (0 = none)
-    mapping(uint => mapping(address => uint)) public voterChoice;
+    // pollId => optionId => Option (private to hide vote counts until reveal)
+    mapping(uint => mapping(uint => Option)) private options;
+    // pollId => voter => choice (private to protect vote privacy)
+    mapping(uint => mapping(address => uint)) private voterChoice;
     // pollId => voter => has voted
     mapping(uint => mapping(address => bool)) public hasVoted;
     // pollId => voter => is authorized to vote
@@ -45,6 +54,7 @@ contract ElectionsManager {
     event Revealed(uint indexed pollId);
     event Ended(uint indexed pollId);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
     event VoterAdded(uint indexed pollId, address voter);
     event VoterRemoved(uint indexed pollId, address voter);
 
@@ -64,14 +74,35 @@ contract ElectionsManager {
 
     function transferOwnership(address newOwner) external onlyOwner {
         require(newOwner != address(0), "new owner is zero address");
-        emit OwnershipTransferred(owner, newOwner);
-        owner = newOwner;
+        pendingOwner = newOwner;
+        emit OwnershipTransferStarted(owner, newOwner);
+    }
+
+    function acceptOwnership() external {
+        require(msg.sender == pendingOwner, "Only pending owner can accept.");
+        address previous = owner;
+        owner = pendingOwner;
+        pendingOwner = address(0);
+        emit OwnershipTransferred(previous, owner);
+    }
+
+    function cancelOwnershipTransfer() external onlyOwner {
+        require(pendingOwner != address(0), "No pending transfer.");
+        pendingOwner = address(0);
+    }
+
+    function renounceOwnership() external onlyOwner {
+        address previous = owner;
+        owner = address(0);
+        pendingOwner = address(0);
+        emit OwnershipTransferred(previous, address(0));
     }
 
     function createPoll(string calldata title, address admin, uint durationSeconds) external onlyOwner returns (uint) {
         require(admin != address(0), "admin zero");
         // NEW: check for duplicate title
         require(!pollTitles[title], "Poll title already exists.");
+        require(durationSeconds >= MIN_POLL_DURATION, "Poll duration too short.");
         pollsCount += 1;
         uint pid = pollsCount;
         Poll storage p = polls[pid];
@@ -98,6 +129,7 @@ contract ElectionsManager {
         require(!pollOptionNames[pollId][name], "Option name already exists in this poll.");
 
         Poll storage p = polls[pollId];
+        require(p.optionsCount < MAX_OPTIONS, "Maximum options limit reached.");
         p.optionsCount += 1;
         uint oid = p.optionsCount;
         options[pollId][oid] = Option({ id: oid, name: name, votes: 0 });
@@ -120,6 +152,7 @@ contract ElectionsManager {
     function addVoters(uint pollId, address[] calldata voters) external onlyAdminOrOwner(pollId) {
         require(polls[pollId].exists, "Poll does not exist.");
         require(!polls[pollId].ended, "Poll ended; cannot add voters.");
+        require(voters.length <= MAX_VOTERS_BATCH, "Batch size exceeds maximum limit.");
 
         for(uint i = 0; i < voters.length; i++) {
             address voter = voters[i];
@@ -138,6 +171,7 @@ contract ElectionsManager {
         require(!hasVoted[pollId][voter], "Cannot remove voter who already voted.");
 
         authorizedVoters[pollId][voter] = false;
+        voterChoice[pollId][voter] = 0; // Clear any previous choice data
         emit VoterRemoved(pollId, voter);
     }
 
@@ -150,7 +184,14 @@ contract ElectionsManager {
     }
 
     function getOption(uint pollId, uint optionId) external view returns (uint, string memory, uint) {
+        require(polls[pollId].exists, "Poll does not exist.");
+        Poll storage p = polls[pollId];
         Option storage o = options[pollId][optionId];
+        
+        // Only show vote counts after reveal or to admin/owner
+        if (!p.revealed && msg.sender != p.admin && msg.sender != owner) {
+            return (o.id, o.name, 0);
+        }
         return (o.id, o.name, o.votes);
     }
 
@@ -158,7 +199,7 @@ contract ElectionsManager {
         require(polls[pollId].exists, "Poll does not exist.");
         require(authorizedVoters[pollId][msg.sender], "Not authorized to vote in this poll.");
         Poll storage p = polls[pollId];
-        require(block.timestamp <= p.endTime, "Poll time over.");
+        require(block.timestamp + TIME_BUFFER <= p.endTime, "Poll time over.");
         require(!p.ended, "Poll ended; cannot vote.");
         require(optionId > 0 && optionId <= p.optionsCount, "Invalid option.");
         require(!hasVoted[pollId][msg.sender], "You have already voted.");
@@ -228,7 +269,7 @@ contract ElectionsManager {
     function revealResults(uint pollId) external {
         require(polls[pollId].exists, "Poll does not exist.");
         require(msg.sender == polls[pollId].admin || msg.sender == owner, "Only poll admin or owner allowed.");
-        require(block.timestamp > polls[pollId].endTime, "Cannot reveal before poll end.");
+        require(block.timestamp >= polls[pollId].endTime + TIME_BUFFER, "Cannot reveal before poll end plus buffer.");
         polls[pollId].revealed = true;
         emit Revealed(pollId);
     }
@@ -236,7 +277,7 @@ contract ElectionsManager {
     function endPoll(uint pollId) external {
         require(polls[pollId].exists, "Poll does not exist.");
         require(msg.sender == polls[pollId].admin || msg.sender == owner, "Only poll admin or owner allowed.");
-        require(block.timestamp > polls[pollId].endTime, "Cannot end before end time.");
+        require(block.timestamp >= polls[pollId].endTime + TIME_BUFFER, "Cannot end before end time plus buffer.");
         polls[pollId].ended = true;
         emit Ended(pollId);
     }

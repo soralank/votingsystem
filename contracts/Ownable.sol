@@ -5,7 +5,10 @@ pragma solidity ^0.8.20;
 contract Ownable {
 	// Owner state and transfer event
 	address public owner;
+	address public pendingOwner;
+	
 	event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+	event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
 
 	// Set deployer as initial owner
 	constructor() {
@@ -18,11 +21,33 @@ contract Ownable {
 		_;
 	}
 
-	// Transfer ownership
+	// Transfer ownership (2-step process)
 	function transferOwnership(address _newOwner) public onlyOwner {
 		require(_newOwner != address(0), "New owner is the zero address.");
+		pendingOwner = _newOwner;
+		emit OwnershipTransferStarted(owner, _newOwner);
+	}
+
+	// New owner accepts ownership
+	function acceptOwnership() public {
+		require(msg.sender == pendingOwner, "Only pending owner can accept.");
 		address previous = owner;
-		owner = _newOwner;
-		emit OwnershipTransferred(previous, _newOwner);
+		owner = pendingOwner;
+		pendingOwner = address(0);
+		emit OwnershipTransferred(previous, owner);
+	}
+
+	// Cancel pending ownership transfer
+	function cancelOwnershipTransfer() public onlyOwner {
+		require(pendingOwner != address(0), "No pending transfer.");
+		pendingOwner = address(0);
+	}
+
+	// Renounce ownership (makes contract ownerless)
+	function renounceOwnership() public onlyOwner {
+		address previous = owner;
+		owner = address(0);
+		pendingOwner = address(0);
+		emit OwnershipTransferred(previous, address(0));
 	}
 }

@@ -50,7 +50,8 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     await (await voting.connect(admin).addVoters(pollId, [alice.address, bob.address])).wait();
 
     expect(bnToNumber(await voting.getOptionsCount(pollId))).to.equal(2);
-    const opt1 = await voting.getOption(pollId, 1);
+    // Votes are hidden before reveal (returns 0) - admin can see them
+    const opt1 = await voting.connect(admin).getOption(pollId, 1);
     expect(bnToNumber(opt1[0])).to.equal(1);
     expect(opt1[1]).to.equal("3");
     expect(bnToNumber(opt1[2])).to.equal(0);
@@ -61,7 +62,8 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
     // totals and option counts
     expect(bnToNumber(await voting.getTotalVotes(pollId))).to.equal(2);
-    const opt2 = await voting.getOption(pollId, 2);
+    // Admin can see vote counts before reveal
+    const opt2 = await voting.connect(admin).getOption(pollId, 2);
     expect(bnToNumber(opt2[2])).to.equal(2);
 
     // one person can only vote on a poll once -> double vote should revert
@@ -97,7 +99,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
   });
 
   it("time limits, reveal and end behavior, and getVoterChoice access control for a poll", async function () {
-    const shortDuration = 60; // use a larger duration to avoid timing flakiness
+    const shortDuration = 400; // Must be >= MIN_POLL_DURATION (300)
     await (await voting.connect(owner).createPoll("TimePoll", admin.address, shortDuration)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
@@ -120,15 +122,15 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
       "Results not revealed."
     );
 
-    // advance time beyond endTime (use contract-provided endTime to avoid flakiness)
+    // advance time beyond endTime + TIME_BUFFER (use contract-provided endTime to avoid flakiness)
     const endTime = bnToNumber(await voting.getPollEndTime(pollId));
-    await ethers.provider.send("evm_setNextBlockTimestamp", [endTime + 1]);
+    await ethers.provider.send("evm_setNextBlockTimestamp", [endTime + 35]);
     await ethers.provider.send("evm_mine", []);
 
-    // attempting to vote after time should revert
+    // attempting to vote after time should revert (already past endTime + buffer)
     await expect(voting.connect(bob).voteInPoll(pollId, 2)).to.be.revertedWith("Poll time over.");
 
-    // reveal now allowed (time has passed)
+    // reveal now allowed (time has passed + TIME_BUFFER)
     await (await voting.connect(admin).revealResults(pollId)).wait();
 
     // after reveal, anyone can read voter choice
@@ -145,29 +147,36 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
   });
 
   it("end before endTime and reveal before endTime revert appropriately for a poll", async function () {
-    const mediumDuration = 60;
+    const mediumDuration = 400; // Must be >= MIN_POLL_DURATION (300)
     await (await voting.connect(owner).createPoll("Short2", admin.address, mediumDuration)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
-    // Cannot end before endTime
-    await expect(voting.connect(admin).endPoll(pollId)).to.be.revertedWith("Cannot end before end time.");
+    // Cannot end before endTime + TIME_BUFFER
+    await expect(voting.connect(admin).endPoll(pollId)).to.be.revertedWith("Cannot end before end time plus buffer.");
 
-    // Cannot reveal before endTime
-    await expect(voting.connect(admin).revealResults(pollId)).to.be.revertedWith("Cannot reveal before poll end.");
+    // Cannot reveal before endTime + TIME_BUFFER
+    await expect(voting.connect(admin).revealResults(pollId)).to.be.revertedWith("Cannot reveal before poll end plus buffer.");
   });
 
-  it("ownership transfer: new owner can create polls; old owner can't", async function () {
+  it("ownership transfer: new owner can create polls; old owner can't (2-step process)", async function () {
+    // Step 1: Current owner proposes transfer
     await (await voting.connect(owner).transferOwnership(newOwner.address)).wait();
 
-    // old owner cannot create
+    // Old owner can still create (transfer not complete yet)
+    await (await voting.connect(owner).createPoll("StillOwner", admin.address, 1000)).wait();
+
+    // Step 2: New owner accepts ownership
+    await (await voting.connect(newOwner).acceptOwnership()).wait();
+
+    // Now old owner cannot create
     await expect(voting.connect(owner).createPoll("ShouldFail", admin.address, 1000)).to.be.revertedWith(
       "Only owner can perform this action."
     );
 
-    // new owner can create
+    // New owner can create
     await (await voting.connect(newOwner).createPoll("ByNewOwner", admin.address, 1000)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
-    expect(pollId).to.be.greaterThan(0);
+    expect(pollId).to.be.greaterThan(1); // Should be > 1 since old owner created one
   });
 
   // New tests updated to poll wording
@@ -275,7 +284,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
   });
 
   it("helper functions: isPollActive returns correct status", async function () {
-    const shortDuration = 60;
+    const shortDuration = 400; // Must be >= MIN_POLL_DURATION (300)
     await (await voting.connect(owner).createPoll("ActiveTest", admin.address, shortDuration)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
@@ -315,9 +324,9 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     // non-admin cannot see winner before reveal
     await expect(voting.connect(attacker).getWinner(pollId)).to.be.revertedWith("Results not revealed.");
 
-    // advance time and reveal
+    // advance time and reveal (need TIME_BUFFER after endTime)
     const endTime = bnToNumber(await voting.getPollEndTime(pollId));
-    await ethers.provider.send("evm_setNextBlockTimestamp", [endTime + 1]);
+    await ethers.provider.send("evm_setNextBlockTimestamp", [endTime + 35]);
     await ethers.provider.send("evm_mine", []);
     await (await voting.connect(admin).revealResults(pollId)).wait();
 
@@ -329,13 +338,13 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
   });
 
   it("cannot add voters after poll ended", async function () {
-    const shortDuration = 60;
+    const shortDuration = 400; // Must be >= MIN_POLL_DURATION (300)
     await (await voting.connect(owner).createPoll("EndedPoll", admin.address, shortDuration)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
-    // advance time and end poll
+    // advance time and end poll (need TIME_BUFFER after endTime)
     const endTime = bnToNumber(await voting.getPollEndTime(pollId));
-    await ethers.provider.send("evm_setNextBlockTimestamp", [endTime + 1]);
+    await ethers.provider.send("evm_setNextBlockTimestamp", [endTime + 35]);
     await ethers.provider.send("evm_mine", []);
     await (await voting.connect(admin).endPoll(pollId)).wait();
 
@@ -382,5 +391,153 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     const newWay = bnToNumber(await voting.getPollsCount());
     expect(oldWay).to.equal(newWay);
     expect(newWay).to.equal(3);
+  });
+
+  // Security Enhancement Tests
+  it("security: MIN_POLL_DURATION - cannot create poll with duration < 300 seconds", async function () {
+    await expect(
+      voting.connect(owner).createPoll("TooShort", admin.address, 299)
+    ).to.be.revertedWith("Poll duration too short.");
+
+    await expect(
+      voting.connect(owner).createPoll("TooShort2", admin.address, 100)
+    ).to.be.revertedWith("Poll duration too short.");
+
+    // 300 seconds should work
+    await (await voting.connect(owner).createPoll("JustRight", admin.address, 300)).wait();
+    expect(bnToNumber(await voting.pollsCount())).to.equal(1);
+  });
+
+  it("security: MAX_OPTIONS - cannot add more than 100 options to a poll", async function () {
+    await (await voting.connect(owner).createPoll("LotsOfOptions", admin.address, 1000)).wait();
+    const pollId = bnToNumber(await voting.pollsCount());
+
+    // Add 100 options (should work)
+    for (let i = 1; i <= 100; i++) {
+      await (await voting.connect(admin).addOptionToPoll(pollId, `Option${i}`)).wait();
+    }
+
+    expect(bnToNumber(await voting.getOptionsCount(pollId))).to.equal(100);
+
+    // 101st option should fail
+    await expect(
+      voting.connect(admin).addOptionToPoll(pollId, "Option101")
+    ).to.be.revertedWith("Maximum options limit reached.");
+  });
+
+  it("security: MAX_VOTERS_BATCH - cannot add more than 50 voters in one batch", async function () {
+    await (await voting.connect(owner).createPoll("LotsOfVoters", admin.address, 1000)).wait();
+    const pollId = bnToNumber(await voting.pollsCount());
+
+    // Create array of 51 addresses (one more than limit)
+    const voters51: string[] = [];
+    for (let i = 0; i < 51; i++) {
+      // Generate unique addresses
+      voters51.push(ethers.Wallet.createRandom().address);
+    }
+    
+    await expect(
+      voting.connect(admin).addVoters(pollId, voters51)
+    ).to.be.revertedWith("Batch size exceeds maximum limit.");
+
+    // 50 voters should work
+    const voters50 = voters51.slice(0, 50);
+    await (await voting.connect(admin).addVoters(pollId, voters50)).wait();
+  });
+
+  it("security: vote privacy - non-admin cannot see vote counts before reveal", async function () {
+    await (await voting.connect(owner).createPoll("PrivacyTest", admin.address, 1000)).wait();
+    const pollId = bnToNumber(await voting.pollsCount());
+
+    await (await voting.connect(admin).addOptionToPoll(pollId, "Secret1")).wait();
+    await (await voting.connect(admin).addOptionToPoll(pollId, "Secret2")).wait();
+    await (await voting.connect(admin).addVoters(pollId, [alice.address, bob.address])).wait();
+
+    // Alice and Bob vote
+    await (await voting.connect(alice).voteInPoll(pollId, 1)).wait();
+    await (await voting.connect(bob).voteInPoll(pollId, 1)).wait();
+
+    // Admin can see vote counts
+    const adminView = await voting.connect(admin).getOption(pollId, 1);
+    expect(bnToNumber(adminView[2])).to.equal(2);
+
+    // Attacker (non-admin) sees 0 votes
+    const attackerView = await voting.connect(attacker).getOption(pollId, 1);
+    expect(bnToNumber(attackerView[2])).to.equal(0);
+
+    // After reveal, everyone can see
+    const endTime = bnToNumber(await voting.getPollEndTime(pollId));
+    await ethers.provider.send("evm_setNextBlockTimestamp", [endTime + 35]);
+    await ethers.provider.send("evm_mine", []);
+    await (await voting.connect(admin).revealResults(pollId)).wait();
+
+    const publicView = await voting.connect(attacker).getOption(pollId, 1);
+    expect(bnToNumber(publicView[2])).to.equal(2);
+  });
+
+  it("security: TIME_BUFFER - cannot vote in last 30 seconds of poll", async function () {
+    await (await voting.connect(owner).createPoll("BufferTest", admin.address, 400)).wait();
+    const pollId = bnToNumber(await voting.pollsCount());
+
+    await (await voting.connect(admin).addOptionToPoll(pollId, "Option1")).wait();
+    await (await voting.connect(admin).addVoter(pollId, alice.address)).wait();
+
+    // Get endTime
+    const endTime = bnToNumber(await voting.getPollEndTime(pollId));
+
+    // Try to vote at endTime - 25 seconds (within buffer) - should fail
+    await ethers.provider.send("evm_setNextBlockTimestamp", [endTime - 25]);
+    await ethers.provider.send("evm_mine", []);
+
+    await expect(
+      voting.connect(alice).voteInPoll(pollId, 1)
+    ).to.be.revertedWith("Poll time over.");
+  });
+
+  it("ownership: 2-step transfer - cancelOwnershipTransfer", async function () {
+    // Propose transfer
+    await (await voting.connect(owner).transferOwnership(attacker.address)).wait();
+
+    // Owner changes mind and cancels
+    await (await voting.connect(owner).cancelOwnershipTransfer()).wait();
+
+    // Attacker cannot accept (no pending transfer)
+    await expect(
+      voting.connect(attacker).acceptOwnership()
+    ).to.be.revertedWith("Only pending owner can accept.");
+
+    // Owner still has control
+    await (await voting.connect(owner).createPoll("OwnerStillInControl", admin.address, 1000)).wait();
+    expect(bnToNumber(await voting.pollsCount())).to.equal(1);
+  });
+
+  it("ownership: 2-step transfer - only pending owner can accept", async function () {
+    // Propose transfer to newOwner
+    await (await voting.connect(owner).transferOwnership(newOwner.address)).wait();
+
+    // Attacker tries to accept (should fail)
+    await expect(
+      voting.connect(attacker).acceptOwnership()
+    ).to.be.revertedWith("Only pending owner can accept.");
+
+    // Correct pending owner accepts
+    await (await voting.connect(newOwner).acceptOwnership()).wait();
+
+    // Verify newOwner has control
+    await (await voting.connect(newOwner).createPoll("NewOwnerPoll", admin.address, 1000)).wait();
+    expect(bnToNumber(await voting.pollsCount())).to.equal(1);
+  });
+
+  it("ownership: renounceOwnership - makes contract ownerless", async function () {
+    await (await voting.connect(owner).renounceOwnership()).wait();
+
+    // No one can create polls now
+    await expect(
+      voting.connect(owner).createPoll("Fail", admin.address, 1000)
+    ).to.be.revertedWith("Only owner can perform this action.");
+
+    await expect(
+      voting.connect(newOwner).createPoll("Fail2", admin.address, 1000)
+    ).to.be.revertedWith("Only owner can perform this action.");
   });
 });
