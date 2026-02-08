@@ -1,6 +1,9 @@
 import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
 
-export default buildModule("Voting", (m) => {
-    const Voting = m.contract("Voting");
-    return {Voting};
+const VotingModule = buildModule("VotingModule", (m) => {
+  const voting = m.contract("ElectionsManager");
+
+  return { voting };
 });
+
+export default VotingModule;

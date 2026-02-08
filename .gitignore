@@ -22,3 +22,9 @@
 /ignition/deployments
 
 package-lock.json
+
+/ignition/deployments
+
+/.claude
+
+.DS_Store
