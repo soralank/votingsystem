@@ -1,7 +1,31 @@
 // SPDX-License-Identifier: ANKIT.SORAL
 pragma solidity ^0.8.20;
 
-contract ElectionsManager {
+import "./TimeValidator.sol";
+
+/**
+ * @title ElectionsManager
+ * @notice Decentralized voting system with scheduled polls
+ * @dev TIMEZONE & TIME CALCULATION:
+ *      ALL timestamps are Unix timestamps in UTC (seconds since epoch)
+ *      - startTime: Unix timestamp when voting begins (UTC)
+ *      - endTime: Automatically calculated as startTime + durationSeconds (UTC)
+ *      - Current time: block.timestamp (always UTC, set by miners)
+ *      
+ *      FRONTEND INTEGRATION:
+ *      To create a poll starting at specific local time:
+ *        1. Convert local time to UTC Unix timestamp
+ *        2. Pass as startTime parameter
+ *        3. Example (JavaScript):
+ *           const localTime = new Date('2026-03-01T15:00:00'); // Your local time
+ *           const utcTimestamp = Math.floor(localTime.getTime() / 1000);
+ *           await contract.createPoll(title, admin, utcTimestamp, durationInSeconds);
+ *      
+ *      To display times to users:
+ *        const date = new Date(startTime * 1000);
+ *        const localString = date.toLocaleString(); // Converts UTC to user's timezone
+ */
+contract ElectionsManager is TimeValidator {
     address public owner;
     address public pendingOwner;
     uint public pollsCount;
@@ -9,10 +33,6 @@ contract ElectionsManager {
     // Security limits to prevent DoS attacks
     uint public constant MAX_OPTIONS = 100;
     uint public constant MAX_VOTERS_BATCH = 50;
-    
-    // Timestamp manipulation mitigation
-    uint public constant MIN_POLL_DURATION = 300; // 5 minutes minimum
-    uint public constant TIME_BUFFER = 30; // 30 second buffer for timestamp variance
 
     // NEW: prevent duplicate poll titles
     mapping(string => bool) public pollTitles;
@@ -29,6 +49,7 @@ contract ElectionsManager {
     struct Poll {
         string title;
         address admin;
+        uint startTime;
         uint endTime;
         bool revealed;
         bool ended;
@@ -48,7 +69,7 @@ contract ElectionsManager {
     // pollId => voter => is authorized to vote
     mapping(uint => mapping(address => bool)) public authorizedVoters;
 
-    event PollCreated(uint indexed pollId, string title, address admin, uint endTime);
+    event PollCreated(uint indexed pollId, string title, address admin, uint startTime, uint endTime);
     event OptionAdded(uint indexed pollId, uint indexed optionId, string name);
     event Voted(uint indexed pollId, address voter, uint optionId);
     event Revealed(uint indexed pollId);
@@ -98,17 +119,21 @@ contract ElectionsManager {
         emit OwnershipTransferred(previous, address(0));
     }
 
-    function createPoll(string calldata title, address admin, uint durationSeconds) external onlyOwner returns (uint) {
+    function createPoll(string calldata title, address admin, uint startTime, uint durationSeconds) external onlyOwner returns (uint) {
         require(admin != address(0), "admin zero");
         // NEW: check for duplicate title
         require(!pollTitles[title], "Poll title already exists.");
-        require(durationSeconds >= MIN_POLL_DURATION, "Poll duration too short.");
+        
+        // Validate time range using TimeValidator
+        _validateTimeRange(startTime, durationSeconds);
+        
         pollsCount += 1;
         uint pid = pollsCount;
         Poll storage p = polls[pid];
         p.title = title;
         p.admin = admin;
-        p.endTime = block.timestamp + durationSeconds;
+        p.startTime = startTime;
+        p.endTime = startTime + durationSeconds;
         p.revealed = false;
         p.ended = false;
         p.totalVotes = 0;
@@ -117,7 +142,7 @@ contract ElectionsManager {
         // NEW: mark title as used
         pollTitles[title] = true;
 
-        emit PollCreated(pid, title, admin, p.endTime);
+        emit PollCreated(pid, title, admin, startTime, p.endTime);
         return pid;
     }
 
@@ -125,6 +150,7 @@ contract ElectionsManager {
         require(polls[pollId].exists, "Poll does not exist.");
         require(!polls[pollId].ended, "Poll ended; cannot add options.");
         require(msg.sender == polls[pollId].admin || msg.sender == owner, "Only poll admin or owner allowed.");
+        require(!_hasStarted(polls[pollId].startTime), "Poll already started; cannot add options.");
         // NEW: check for duplicate option name in this poll
         require(!pollOptionNames[pollId][name], "Option name already exists in this poll.");
 
@@ -142,6 +168,7 @@ contract ElectionsManager {
     function addVoter(uint pollId, address voter) external onlyAdminOrOwner(pollId) {
         require(polls[pollId].exists, "Poll does not exist.");
         require(!polls[pollId].ended, "Poll ended; cannot add voters.");
+        require(!_hasStarted(polls[pollId].startTime), "Poll already started; cannot add voters.");
         require(voter != address(0), "Invalid voter address.");
         require(!authorizedVoters[pollId][voter], "Voter already authorized.");
 
@@ -152,6 +179,7 @@ contract ElectionsManager {
     function addVoters(uint pollId, address[] calldata voters) external onlyAdminOrOwner(pollId) {
         require(polls[pollId].exists, "Poll does not exist.");
         require(!polls[pollId].ended, "Poll ended; cannot add voters.");
+        require(!_hasStarted(polls[pollId].startTime), "Poll already started; cannot add voters.");
         require(voters.length <= MAX_VOTERS_BATCH, "Batch size exceeds maximum limit.");
 
         for(uint i = 0; i < voters.length; i++) {
@@ -167,11 +195,11 @@ contract ElectionsManager {
     function removeVoter(uint pollId, address voter) external onlyAdminOrOwner(pollId) {
         require(polls[pollId].exists, "Poll does not exist.");
         require(!polls[pollId].ended, "Poll ended; cannot remove voters.");
+        require(!_hasStarted(polls[pollId].startTime), "Poll already started; cannot remove voters.");
         require(authorizedVoters[pollId][voter], "Voter not authorized.");
         require(!hasVoted[pollId][voter], "Cannot remove voter who already voted.");
 
         authorizedVoters[pollId][voter] = false;
-        voterChoice[pollId][voter] = 0; // Clear any previous choice data
         emit VoterRemoved(pollId, voter);
     }
 
@@ -199,7 +227,7 @@ contract ElectionsManager {
         require(polls[pollId].exists, "Poll does not exist.");
         require(authorizedVoters[pollId][msg.sender], "Not authorized to vote in this poll.");
         Poll storage p = polls[pollId];
-        require(block.timestamp + TIME_BUFFER <= p.endTime, "Poll time over.");
+        require(_isWithinVotingPeriod(p.startTime, p.endTime), "Poll not active for voting.");
         require(!p.ended, "Poll ended; cannot vote.");
         require(optionId > 0 && optionId <= p.optionsCount, "Invalid option.");
         require(!hasVoted[pollId][msg.sender], "You have already voted.");
@@ -230,6 +258,10 @@ contract ElectionsManager {
         return polls[pollId].endTime;
     }
 
+    function getPollStartTime(uint pollId) external view returns (uint) {
+        return polls[pollId].startTime;
+    }
+
     function hasVoterVoted(uint pollId, address voter) external view returns (bool) {
         return hasVoted[pollId][voter];
     }
@@ -241,7 +273,28 @@ contract ElectionsManager {
     function isPollActive(uint pollId) external view returns (bool) {
         require(polls[pollId].exists, "Poll does not exist.");
         Poll storage p = polls[pollId];
-        return !p.ended && block.timestamp <= p.endTime;
+        return !p.ended && _isWithinVotingPeriod(p.startTime, p.endTime);
+    }
+
+    function isPollStarted(uint pollId) external view returns (bool) {
+        require(polls[pollId].exists, "Poll does not exist.");
+        return block.timestamp >= polls[pollId].startTime;
+    }
+
+    function isPollEnded(uint pollId) external view returns (bool) {
+        require(polls[pollId].exists, "Poll does not exist.");
+        Poll storage p = polls[pollId];
+        return p.ended || _hasEnded(p.endTime);
+    }
+
+    function getPollStatus(uint pollId) external view returns (bool started, bool active, bool ended, bool revealed) {
+        require(polls[pollId].exists, "Poll does not exist.");
+        Poll storage p = polls[pollId];
+        
+        started = block.timestamp >= p.startTime;
+        active = !p.ended && _isWithinVotingPeriod(p.startTime, p.endTime);
+        ended = p.ended || _hasEnded(p.endTime);
+        revealed = p.revealed;
     }
 
     function getWinner(uint pollId) external view returns (uint winningOptionId, string memory winningOptionName, uint winningVotes) {
@@ -269,7 +322,7 @@ contract ElectionsManager {
     function revealResults(uint pollId) external {
         require(polls[pollId].exists, "Poll does not exist.");
         require(msg.sender == polls[pollId].admin || msg.sender == owner, "Only poll admin or owner allowed.");
-        require(block.timestamp >= polls[pollId].endTime + TIME_BUFFER, "Cannot reveal before poll end plus buffer.");
+        require(_hasEnded(polls[pollId].endTime), "Cannot reveal before poll end plus buffer.");
         polls[pollId].revealed = true;
         emit Revealed(pollId);
     }
@@ -277,7 +330,7 @@ contract ElectionsManager {
     function endPoll(uint pollId) external {
         require(polls[pollId].exists, "Poll does not exist.");
         require(msg.sender == polls[pollId].admin || msg.sender == owner, "Only poll admin or owner allowed.");
-        require(block.timestamp >= polls[pollId].endTime + TIME_BUFFER, "Cannot end before end time plus buffer.");
+        require(_hasEnded(polls[pollId].endTime), "Cannot end before end time plus buffer.");
         polls[pollId].ended = true;
         emit Ended(pollId);
     }
