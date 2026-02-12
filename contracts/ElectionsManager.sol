@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: ANKIT.SORAL
 pragma solidity ^0.8.20;
 
-import "./TimeValidator.sol";
+import "./TokenIntegratedVoting.sol";
 
 /**
  * @title ElectionsManager
@@ -11,7 +11,7 @@ import "./TimeValidator.sol";
  *      - startTime: Unix timestamp when voting begins (UTC)
  *      - endTime: Automatically calculated as startTime + durationSeconds (UTC)
  *      - Current time: block.timestamp (always UTC, set by miners)
- *      
+ *
  *      FRONTEND INTEGRATION:
  *      To create a poll starting at specific local time:
  *        1. Convert local time to UTC Unix timestamp
@@ -20,14 +20,12 @@ import "./TimeValidator.sol";
  *           const localTime = new Date('2026-03-01T15:00:00'); // Your local time
  *           const utcTimestamp = Math.floor(localTime.getTime() / 1000);
  *           await contract.createPoll(title, admin, utcTimestamp, durationInSeconds);
- *      
+ *
  *      To display times to users:
  *        const date = new Date(startTime * 1000);
  *        const localString = date.toLocaleString(); // Converts UTC to user's timezone
  */
-contract ElectionsManager is TimeValidator {
-    address public owner;
-    address public pendingOwner;
+contract ElectionsManager is TokenIntegratedVoting {
     uint public pollsCount;
 
     // Security limits to prevent DoS attacks
@@ -56,7 +54,14 @@ contract ElectionsManager is TimeValidator {
         uint totalVotes;
         uint optionsCount;
         bool exists;
+        // Token voting fields
+        bool tokenVotingEnabled;
+        bool tokenVotingRequired;
     }
+
+    // Vote method tracking
+    enum VoteMethod { GasPayment, Token }
+    mapping(uint256 => mapping(address => VoteMethod)) public voteMethod;
 
     // pollId => Poll
     mapping(uint => Poll) public polls;
@@ -74,59 +79,33 @@ contract ElectionsManager is TimeValidator {
     event Voted(uint indexed pollId, address voter, uint optionId);
     event Revealed(uint indexed pollId);
     event Ended(uint indexed pollId);
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-    event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
     event VoterAdded(uint indexed pollId, address voter);
     event VoterRemoved(uint indexed pollId, address voter);
-
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Only owner can perform this action.");
-        _;
-    }
 
     modifier onlyAdminOrOwner(uint pollId) {
         require(msg.sender == polls[pollId].admin || msg.sender == owner, "Only poll admin or owner allowed.");
         _;
     }
 
-    constructor() {
-        owner = msg.sender;
+    constructor() TokenIntegratedVoting() {
+        // Owner is initialized in parent constructor
     }
 
-    function transferOwnership(address newOwner) external onlyOwner {
-        require(newOwner != address(0), "new owner is zero address");
-        pendingOwner = newOwner;
-        emit OwnershipTransferStarted(owner, newOwner);
-    }
-
-    function acceptOwnership() external {
-        require(msg.sender == pendingOwner, "Only pending owner can accept.");
-        address previous = owner;
-        owner = pendingOwner;
-        pendingOwner = address(0);
-        emit OwnershipTransferred(previous, owner);
-    }
-
-    function cancelOwnershipTransfer() external onlyOwner {
-        require(pendingOwner != address(0), "No pending transfer.");
-        pendingOwner = address(0);
-    }
-
-    function renounceOwnership() external onlyOwner {
-        address previous = owner;
-        owner = address(0);
-        pendingOwner = address(0);
-        emit OwnershipTransferred(previous, address(0));
-    }
-
-    function createPoll(string calldata title, address admin, uint startTime, uint durationSeconds) external onlyOwner returns (uint) {
+    function createPoll(
+        string calldata title,
+        address admin,
+        uint startTime,
+        uint durationSeconds,
+        bool enableTokenVoting,
+        bool requireTokenVoting
+    ) external onlyOwner returns (uint) {
         require(admin != address(0), "admin zero");
         // NEW: check for duplicate title
         require(!pollTitles[title], "Poll title already exists.");
-        
+
         // Validate time range using TimeValidator
         _validateTimeRange(startTime, durationSeconds);
-        
+
         pollsCount += 1;
         uint pid = pollsCount;
         Poll storage p = polls[pid];
@@ -139,11 +118,44 @@ contract ElectionsManager is TimeValidator {
         p.totalVotes = 0;
         p.optionsCount = 0;
         p.exists = true;
+        // Token voting configuration
+        p.tokenVotingEnabled = enableTokenVoting;
+        p.tokenVotingRequired = requireTokenVoting;
         // NEW: mark title as used
         pollTitles[title] = true;
 
+        // Create token for poll if enabled and TokenManager is set
+        if (enableTokenVoting && address(tokenManager) != address(0)) {
+            string memory tokenName = string(abi.encodePacked("Vote-", title));
+            string memory tokenSymbol = string(abi.encodePacked("VOTE", _uint2str(pid)));
+            tokenManager.createPollToken(pid, tokenName, tokenSymbol);
+        }
+
         emit PollCreated(pid, title, admin, startTime, p.endTime);
         return pid;
+    }
+
+    // Helper function to convert uint to string
+    function _uint2str(uint256 _i) internal pure returns (string memory) {
+        if (_i == 0) {
+            return "0";
+        }
+        uint256 j = _i;
+        uint256 len;
+        while (j != 0) {
+            len++;
+            j /= 10;
+        }
+        bytes memory bstr = new bytes(len);
+        uint256 k = len;
+        while (_i != 0) {
+            k = k - 1;
+            uint8 temp = (48 + uint8(_i - _i / 10 * 10));
+            bytes1 b1 = bytes1(temp);
+            bstr[k] = b1;
+            _i /= 10;
+        }
+        return string(bstr);
     }
 
     function addOptionToPoll(uint pollId, string calldata name) external {
@@ -176,7 +188,7 @@ contract ElectionsManager is TimeValidator {
         emit VoterAdded(pollId, voter);
     }
 
-    function addVoters(uint pollId, address[] calldata voters) external onlyAdminOrOwner(pollId) {
+    function addVoters(uint pollId, address[] calldata voters) public onlyAdminOrOwner(pollId) {
         require(polls[pollId].exists, "Poll does not exist.");
         require(!polls[pollId].ended, "Poll ended; cannot add voters.");
         require(!_hasStarted(polls[pollId].startTime), "Poll already started; cannot add voters.");
@@ -232,12 +244,86 @@ contract ElectionsManager is TimeValidator {
         require(optionId > 0 && optionId <= p.optionsCount, "Invalid option.");
         require(!hasVoted[pollId][msg.sender], "You have already voted.");
 
+        // Check if token voting is required
+        if (p.tokenVotingRequired) {
+            revert("This poll requires token-based voting. Use voteInPollWithToken()");
+        }
+
         hasVoted[pollId][msg.sender] = true;
         voterChoice[pollId][msg.sender] = optionId;
+        options[pollId][optionId].votes +=1;
+        p.totalVotes += 1;
+
+        // Track vote method
+        voteMethod[pollId][msg.sender] = VoteMethod.GasPayment;
+
+        emit Voted(pollId, msg.sender, optionId);
+    }
+
+    /**
+     * @notice Vote with token (can be called by voter directly or by paymaster)
+     * @param pollId Poll ID
+     * @param optionId Option to vote for
+     * @param voter Voter address
+     */
+    function voteInPollWithToken(
+        uint256 pollId,
+        uint256 optionId,
+        address voter
+    ) public override {
+        // Can be called by voter directly OR by paymaster
+        require(
+            msg.sender == voter || msg.sender == address(votingPaymaster),
+            "Only voter or paymaster"
+        );
+
+        require(polls[pollId].exists, "Poll does not exist.");
+        require(authorizedVoters[pollId][voter], "Not authorized to vote in this poll.");
+        Poll storage p = polls[pollId];
+        require(_isWithinVotingPeriod(p.startTime, p.endTime), "Poll not active for voting.");
+        require(!p.ended, "Poll ended; cannot vote.");
+        require(optionId > 0 && optionId <= p.optionsCount, "Invalid option.");
+        require(!hasVoted[pollId][voter], "Already voted.");
+        require(p.tokenVotingEnabled, "Token voting not enabled for this poll.");
+
+        // Call parent to burn tokens
+        super.voteInPollWithToken(pollId, optionId, voter);
+
+        // Record vote
+        hasVoted[pollId][voter] = true;
+        voterChoice[pollId][voter] = optionId;
         options[pollId][optionId].votes += 1;
         p.totalVotes += 1;
 
-        emit Voted(pollId, msg.sender, optionId);
+        // Track vote method
+        voteMethod[pollId][voter] = VoteMethod.Token;
+
+        emit Voted(pollId, voter, optionId);
+    }
+
+    /**
+     * @notice Add voters and allocate tokens in one transaction
+     * @param pollId Poll ID
+     * @param voters Array of voter addresses
+     * @param tokensPerVoter Tokens to allocate per voter
+     */
+    function addVotersWithTokens(
+        uint pollId,
+        address[] calldata voters,
+        uint256 tokensPerVoter
+    ) external onlyAdminOrOwner(pollId) {
+        // First add voters (using existing logic)
+        addVoters(pollId, voters);
+
+        // Then allocate tokens if enabled
+        Poll storage p = polls[pollId];
+        if (p.tokenVotingEnabled && address(tokenManager) != address(0)) {
+            uint256[] memory amounts = new uint256[](voters.length);
+            for (uint256 i = 0; i < voters.length; i++) {
+                amounts[i] = tokensPerVoter;
+            }
+            tokenManager.batchAllocateTokens(pollId, voters, amounts);
+        }
     }
 
     function getTotalVotes(uint pollId) external view returns (uint) {
