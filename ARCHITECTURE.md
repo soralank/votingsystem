@@ -1,194 +1,422 @@
-# System Architecture - Voting System
+# System Architecture - Voting System v2.0
 
-This document provides a comprehensive overview of the Voting System's architecture, design decisions, and technical implementation.
+Complete technical architecture documentation for the production-grade blockchain voting platform with token-based gasless voting.
+
+---
 
 ## 📋 Table of Contents
 
 - [Overview](#overview)
 - [System Architecture](#system-architecture)
 - [Smart Contract Architecture](#smart-contract-architecture)
+- [Token System Architecture](#token-system-architecture)
+- [Gasless Voting Architecture](#gasless-voting-architecture)
+- [Upgradeable Architecture](#upgradeable-architecture)
 - [Data Models](#data-models)
 - [Security Architecture](#security-architecture)
+- [Event Architecture](#event-architecture)
 - [Gas Optimization](#gas-optimization)
-- [Deployment Architecture](#deployment-architecture)
 - [Design Patterns](#design-patterns)
-- [Future Enhancements](#future-enhancements)
+
+---
 
 ## 🎯 Overview
 
-The Voting System is a blockchain-based decentralized application (dApp) that enables secure, transparent, and tamper-proof elections. Built on Ethereum, it leverages smart contracts to ensure vote integrity and eliminate centralized control.
+The Voting System v2.0 is a production-grade blockchain voting platform built on Ethereum with three distinct voting methods:
+1. **Traditional Voting**: Voters pay gas fees directly
+2. **Token-Based Voting**: Voters use allocated tokens (pay gas but token is burned)
+3. **Gasless Voting**: Meta-transactions where admin sponsors gas fees
 
 ### Key Characteristics
 
 - **Decentralized**: No single point of control
 - **Transparent**: All votes verifiable on-chain
-- **Immutable**: Votes cannot be altered after casting
-- **Permissioned**: Only authorized voters can participate
-- **Auditable**: Complete transaction history
+- **Immutable**: Votes cannot be altered
+- **Flexible**: Multiple voting methods per poll
+- **Upgradeable**: UUPS proxy pattern for future enhancements
+- **Production-Grade Events**: Efficient indexed parameters for analytics
+- **Comprehensive Error Handling**: 56+ documented error codes
+
+---
 
 ## 🏗️ System Architecture
 
 ### High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         VOTING SYSTEM ARCHITECTURE                   │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                        VOTING SYSTEM v2.0 ARCHITECTURE                        │
+└──────────────────────────────────────────────────────────────────────────────┘
 
-┌─────────────────────┐
-│   Frontend Layer    │ (Future Implementation)
-│  ┌───────────────┐  │
-│  │  Web3 UI      │  │ - React/Vue Application
-│  │  (React/Vue)  │  │ - MetaMask Integration
-│  └───────┬───────┘  │ - ethers.js/web3.js
-└──────────┼──────────┘
-           │
-           │ JSON-RPC
-           │
-┌──────────▼──────────┐
-│  Blockchain Layer   │
-│  ┌───────────────┐  │
-│  │ Ethereum Node │  │ - Transaction Processing
-│  │ (Geth/Hardhat)│  │ - Block Validation
-│  └───────┬───────┘  │ - State Management
-└──────────┼──────────┘
-           │
-           │ EVM Execution
-           │
-┌──────────▼──────────────────────────────────────────┐
-│           Smart Contract Layer                       │
-│  ┌────────────────────────────────────────────┐     │
-│  │         ElectionsManager Contract          │     │
-│  ├────────────────────────────────────────────┤     │
-│  │  • Poll Management                         │     │
-│  │  • Voter Authorization                     │     │
-│  │  • Vote Casting & Recording                │     │
-│  │  • Results Calculation                     │     │
-│  │  • Access Control                          │     │
-│  └────────────────────────────────────────────┘     │
-│                                                      │
-│  ┌────────────────────────────────────────────┐     │
-│  │      Ownable Contract (Base)               │     │
-│  │  • Ownership Management                    │     │
-│  │  • Ownership Transfer                      │     │
-│  └────────────────────────────────────────────┘     │
-└──────────────────────────────────────────────────────┘
-           │
-           │ State Storage
-           │
-┌──────────▼──────────┐
-│   Storage Layer     │
-│  ┌───────────────┐  │
-│  │  Blockchain   │  │ - Polls Data
-│  │    State      │  │ - Votes
-│  │   Database    │  │ - Authorizations
-│  └───────────────┘  │ - Events
-└─────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                            FRONTEND LAYER (Future)                            │
+│  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐  ┌──────────────────┐  │
+│  │   React UI  │──│  ethers.js   │──│  MetaMask   │──│  Event Listeners │  │
+│  │   Dashboard │  │  Integration │  │  Connector  │  │  & Analytics     │  │
+│  └─────────────┘  └──────────────┘  └─────────────┘  └──────────────────┘  │
+└────────────────────────────────┬─────────────────────────────────────────────┘
+                                 │ JSON-RPC / Web3
+                                 ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                            BLOCKCHAIN LAYER                                   │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │  Ethereum Node (Geth/Hardhat/Infura)                                 │   │
+│  │  • Block Production & Validation                                     │   │
+│  │  • Transaction Processing                                            │   │
+│  │  • State Management                                                  │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+└────────────────────────────────┬─────────────────────────────────────────────┘
+                                 │ EVM Execution
+                                 ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                        SMART CONTRACT LAYER                                   │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │                     CORE VOTING CONTRACTS                             │   │
+│  │  ┌─────────────────────────────────────────────────────────────┐    │   │
+│  │  │  ElectionsManager.sol (Main Contract)                       │    │   │
+│  │  │  • Poll Creation & Management                               │    │   │
+│  │  │  • Voter Authorization                                      │    │   │
+│  │  │  • Vote Casting (3 methods)                                 │    │   │
+│  │  │  • Results Revelation                                       │    │   │
+│  │  │  • Production-Grade Events                                  │    │   │
+│  │  └─────────────────────────────────────────────────────────────┘    │   │
+│  │                                                                       │   │
+│  │  ┌────────────────────────┐  ┌─────────────────────────────────┐   │   │
+│  │  │  TokenManager.sol      │  │  VotingPaymaster.sol            │   │   │
+│  │  │  • Token Factory        │  │  • Gas Sponsorship              │   │   │
+│  │  │  • Allocation          │  │  • EIP-712 Signatures           │   │   │
+│  │  │  • Burning             │  │  • Meta-Transactions            │   │   │
+│  │  └────────────┬───────────┘  └─────────────────────────────────┘   │   │
+│  │               │ creates                                              │   │
+│  │               ▼                                                      │   │
+│  │  ┌────────────────────────┐                                         │   │
+│  │  │  VotingToken.sol       │                                         │   │
+│  │  │  • ERC20-compatible    │                                         │   │
+│  │  │  • Non-transferable    │                                         │   │
+│  │  │  • Burnable            │                                         │   │
+│  │  └────────────────────────┘                                         │   │
+│  └───────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │                     BASE LAYER CONTRACTS                              │   │
+│  │  ┌───────────────────┐  ┌──────────────────┐  ┌──────────────────┐ │   │
+│  │  │ TokenIntegrated   │  │  TimeValidator   │  │  Ownable         │ │   │
+│  │  │ Voting            │  │  (Time Rules)    │  │  (Access Control)│ │   │
+│  │  └───────────────────┘  └──────────────────┘  └──────────────────┘ │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │               UPGRADEABLE CONTRACTS (Optional)                        │   │
+│  │  ┌──────────────┐  ┌───────────────────────────────────────────┐   │   │
+│  │  │ ERC1967Proxy │──│ ElectionsManagerUpgradeable V1/V2         │   │   │
+│  │  │ (Storage)    │  │ • All Core Features + Upgrade Logic       │   │   │
+│  │  │              │  │ • V2: Categories, Weights, Pause          │   │   │
+│  │  └──────────────┘  └───────────────────────────────────────────┘   │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+└────────────────────────────────┬─────────────────────────────────────────────┘
+                                 │ State Storage
+                                 ▼
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                           STORAGE LAYER                                       │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │  Ethereum State Database                                              │   │
+│  │  • Polls Data (title, admin, times, options)                         │   │
+│  │  • Votes (choice, method, timestamp)                                 │   │
+│  │  • Authorizations (per-poll voter lists)                             │   │
+│  │  • Token Balances (per-poll token amounts)                           │   │
+│  │  • Events (indexed for efficient queries)                            │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Component Interaction Flow
 
 ```
-User/Admin → Web3 Wallet → Ethereum Node → Smart Contract → Blockchain State
-     ↑                                              ↓
-     └──────────────── Events/Responses ←──────────┘
+Traditional Vote:
+User → MetaMask → ElectionsManager.voteInPoll() → State Update → Event Emitted
+
+Token Vote (with gas):
+User → MetaMask → ElectionsManager.voteInPollWithToken() → TokenManager.burn() → State Update → Event
+
+Gasless Vote:
+User → Sign EIP-712 → Relayer → VotingPaymaster.executeVote() → TokenManager.burn() → ElectionsManager → State
 ```
+
+---
 
 ## 📐 Smart Contract Architecture
 
 ### Contract Hierarchy
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                  Contract Structure                  │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                    CONTRACT INHERITANCE TREE                              │
+└──────────────────────────────────────────────────────────────────────────┘
 
-                    Ownable.sol
-                  (Base Contract)
-                        │
-                        │ inherits
-                        ▼
-                ElectionsManager.sol
-                  (Core Logic)
-                        │
-                        │ inherits
-                        ▼
-                    Voting.sol
-                (Deployment Contract)
+                              Ownable.sol
+                          (Ownership Management)
+                                   │
+                    ┌──────────────┴───────────────┐
+                    │                              │
+             TimeValidator.sol                     │
+             (Time Validations)                    │
+                    │                              │
+                    ▼                              │
+       TokenIntegratedVoting.sol                   │
+       (Token System Integration)                  │
+                    │                              │
+       ┌────────────┴────────────┐                │
+       │                         │                │
+       ▼                         ▼                ▼
+ElectionsManager.sol    TokenManager.sol    VotingPaymaster.sol
+(Main Voting Logic)     (Token Factory)     (Gas Sponsorship)
+       │
+       │ creates
+       ▼
+VotingToken.sol
+(Per-Poll ERC20)
+
+
+UPGRADEABLE VERSION (UUPS):
+
+Initializable + UUPSUpgradeable + OwnableUpgradeable
+                    │
+                    ▼
+     ElectionsManagerUpgradeable (V1)
+                    │
+        inherits    │
+                    ▼
+     ElectionsManagerUpgradeableV2
+     (V1 + Categories + Weights + Pause)
 ```
 
-### Contract Components
+### Contract Responsibilities
 
-#### 1. Ownable Contract
+| Contract | Purpose | Key Responsibilities |
+|----------|---------|---------------------|
+| **ElectionsManager** | Main voting logic | Poll lifecycle, voting, results |
+| **TokenManager** | Token factory | Create tokens, allocate, burn |
+| **VotingPaymaster** | Gas sponsorship | Meta-transactions, signature verification |
+| **VotingToken** | Per-poll token | ERC20 interface, non-transferable |
+| **TokenIntegratedVoting** | Integration layer | Connect token system to voting |
+| **TimeValidator** | Time rules | Validate poll timing constraints |
+| **Ownable** | Access control | Ownership management |
 
-**Purpose**: Provides ownership and access control functionality
+---
 
-**Responsibilities**:
-- Maintain owner address
-- Enforce owner-only restrictions
-- Enable ownership transfer
+## 🪙 Token System Architecture
+
+### Token Lifecycle
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    TOKEN LIFECYCLE                                │
+└──────────────────────────────────────────────────────────────────┘
+
+1. Poll Creation (token voting enabled)
+   ElectionsManager.createPoll() → TokenManager.createPollToken()
+   └── Deploys new VotingToken contract
+
+2. Token Allocation
+   Admin → ElectionsManager.addVotersWithTokens()
+         → TokenManager.batchAllocateTokens()
+         → VotingToken.mint()
+
+3. Voting (burns token)
+   Voter → ElectionsManager.voteInPollWithToken()
+         → TokenManager.burnTokensForVote()
+         → VotingToken.burn()
+
+4. Token Verification
+   Frontend → TokenManager.hasVoteTokens(pollId, voter)
+            ↓
+   Returns: Does voter have >= TOKENS_PER_VOTE (1)?
+```
+
+### Token Isolation
+
+```
+Poll 1 → VotingToken_1 (0x123...)  ← Only works for Poll 1
+Poll 2 → VotingToken_2 (0x456...)  ← Only works for Poll 2
+Poll 3 → VotingToken_3 (0x789...)  ← Only works for Poll 3
+
+Each token contract:
+- Has immutable pollId
+- Only callable by TokenManager
+- Cannot be transferred between users
+- Destroyed when used to vote
+```
+
+---
+
+## ⛽ Gasless Voting Architecture
+
+### EIP-712 Meta-Transaction Flow
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                  GASLESS VOTING FLOW (EIP-712)                        │
+└──────────────────────────────────────────────────────────────────────┘
+
+Step 1: Voter Creates Signature (Off-Chain)
+┌────────────────────────────────────────────────────────────────┐
+│  Voter's Browser/Wallet                                        │
+│  1. Construct typed data structure:                            │
+│     {                                                           │
+│       pollId: 1,                                               │
+│       optionId: 2,                                             │
+│       voter: 0xVoter...,                                       │
+│       nonce: 0,                                                │
+│       deadline: 1234567890                                     │
+│     }                                                           │
+│                                                                 │
+│  2. Sign with EIP-712:                                         │
+│     signature = wallet._signTypedData(domain, types, value)    │
+│                                                                 │
+│  3. Send to relayer/backend:                                   │
+│     POST /api/gasless-vote { pollId, optionId, voter, deadline, signature }
+│                                                                 │
+└────────────────────────────────────────────────────────────────┘
+                              │
+                              │ Off-chain transmission
+                              ▼
+Step 2: Relayer Submits Transaction (On-Chain)
+┌────────────────────────────────────────────────────────────────┐
+│  Relayer (Admin/Backend)                                        │
+│                                                                 │
+│  1. Extract signature components:                              │
+│     const { v, r, s } = ethers.utils.splitSignature(sig);     │
+│                                                                 │
+│  2. Call paymaster (relayer pays gas):                         │
+│     await paymaster.executeVoteWithToken(                      │
+│       pollId, optionId, voter, deadline, v, r, s              │
+│     );                                                          │
+│                                                                 │
+└────────────────────────────────────────────────────────────────┘
+                              │
+                              │ Blockchain transaction
+                              ▼
+Step 3: Paymaster Verifies & Executes
+┌────────────────────────────────────────────────────────────────┐
+│  VotingPaymaster Contract                                       │
+│                                                                 │
+│  1. Verify signature:                                          │
+│     - Reconstruct EIP-712 hash                                 │
+│     - ecrecover(hash, v, r, s) == voter?                      │
+│     - deadline not passed?                                     │
+│     - nonce correct?                                           │
+│                                                                 │
+│  2. Increment nonce (prevent replay)                           │
+│                                                                 │
+│  3. Check voter has tokens                                     │
+│                                                                 │
+│  4. Call ElectionsManager.voteInPollWithToken()                │
+│                                                                 │
+│  5. Gas paid by paymaster (pre-funded by admin)                │
+│                                                                 │
+└────────────────────────────────────────────────────────────────┘
+```
+
+### Security Mechanisms
+
+| Mechanism | Purpose | Implementation |
+|-----------|---------|----------------|
+| **Nonce** | Prevent replay attacks | Auto-incremented per voter |
+| **Deadline** | Time-limit signatures | Reject if block.timestamp > deadline |
+| **EIP-712** | Structured signing | Prevents signature reuse across contracts |
+| **Relayer Whitelist** | Optional access control | Only trusted addresses can relay |
+| **Gas Limit** | Prevent griefing | max 200K gas per transaction |
+
+---
+
+## 🔄 Upgradeable Architecture (UUPS)
+
+### Proxy Pattern Structure
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                    UUPS UPGRADEABLE PATTERN                           │
+└──────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────┐
+│  ERC1967Proxy                       │  ← Users interact with this address
+│  - Address: 0x1234... (PERMANENT)   │     (never changes!)
+│  - Contains ALL storage              │
+│  - Delegates calls to implementation │
+│                                      │
+│  Storage:                            │
+│  - pollsCount                        │
+│  - polls mapping                     │
+│  - votes mapping                     │
+│  - authorizedVoters mapping          │
+│  - implementation address pointer    │
+│                                      │
+└───────────────┬─────────────────────┘
+                │ delegatecall
+                ▼
+┌─────────────────────────────────────┐
+│  ElectionsManagerUpgradeable V1     │  ← Can be replaced!
+│  - Address: 0x5678... (changeable)  │
+│  - Contains LOGIC ONLY (no storage) │
+│  - Has _authorizeUpgrade()          │
+│                                      │
+│  Functions:                          │
+│  - createPoll()                      │
+│  - voteInPoll()                      │
+│  - revealResults()                   │
+│  - ...all voting logic                │
+│                                      │
+└─────────────────────────────────────┘
+
+Upgrade Process:
+┌──────────────────┐      ┌──────────────────┐
+│ Deploy V2 Impl   │──1──►│ Verify V2 Works  │
+└──────────────────┘      └────────┬─────────┘
+                                    │
+                          2. Call proxy.upgradeToAndCall(v2Impl, initData)
+                                    │
+                                    ▼
+┌─────────────────────────────────────┐
+│  ERC1967Proxy (SAME ADDRESS)        │
+│  - Now points to V2 implementation  │
+│  - ALL storage preserved!           │
+│  - Users don't notice anything      │
+└───────────────┬─────────────────────┘
+                │ delegatecall
+                ▼
+┌─────────────────────────────────────┐
+│  ElectionsManagerUpgradeable V2     │  ← NEW implementation
+│  - Inherits from V1                 │
+│  - Adds new state variables (uses gap) │
+│  - New features:                     │
+│    • Poll categories                 │
+│    • Vote weights                    │
+│    • Pause functionality             │
+│    • Enhanced statistics             │
+└─────────────────────────────────────┘
+```
+
+### Storage Gap System
 
 ```solidity
-contract Ownable {
-    address public owner;
-    
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Only owner");
-        _;
-    }
-    
-    function transferOwnership(address newOwner) public onlyOwner {
-        // Transfer logic
-    }
+// V1: 50 slots reserved for future use
+contract ElectionsManagerUpgradeable {
+    // ... state variables ...
+    uint256[50] private __gap;  // ← Reserve space
+}
+
+// V2: Uses 4 gap slots, 46 remaining
+contract ElectionsManagerUpgradeableV2 is ElectionsManagerUpgradeable {
+    mapping(uint => string) public pollCategories;              // ← Slot 1
+    mapping(uint => mapping(address => uint)) public voteWeight; // ← Slot 2
+    mapping(uint => bool) public pollPaused;                    // ← Slot 3
+    // ... more features ...
+
+    uint256[46] private __gapV2;  // ← 50 - 4 = 46 slots left
 }
 ```
 
-#### 2. ElectionsManager Contract
-
-**Purpose**: Core voting system logic
-
-**Responsibilities**:
-- Poll lifecycle management
-- Voter authorization
-- Vote recording and validation
-- Results calculation
-- Event emission
-
-**Key Features**:
-- Multiple simultaneous polls
-- Per-poll voter authorization
-- Duplicate prevention (titles, options, votes)
-- Time-based poll control
-- Controlled results revelation
-
-#### 3. Voting Contract
-
-**Purpose**: Deployment interface
-
-**Responsibilities**:
-- Inherit all functionality
-- Provide clean deployment interface
-
-### State Management
-
-```
-┌────────────────────────────────────────────────────┐
-│              State Variables Structure              │
-└────────────────────────────────────────────────────┘
-
-Global State:
-├── owner: address
-├── pollsCount: uint
-└── pollTitles: mapping(string => bool)
-
-Poll-Specific State:
-├── polls: mapping(uint => Poll)
-├── options: mapping(uint => mapping(uint => Option))
-├── pollOptionNames: mapping(uint => mapping(string => bool))
-├── authorizedVoters: mapping(uint => mapping(address => bool))
-├── hasVoted: mapping(uint => mapping(address => bool))
-└── voterChoice: mapping(uint => mapping(address => uint))
-```
+---
 
 ## 📊 Data Models
 
@@ -196,471 +424,298 @@ Poll-Specific State:
 
 ```solidity
 struct Poll {
-    string title;          // Poll title (unique)
-    address admin;         // Poll administrator
-    uint endTime;          // End timestamp
-    bool revealed;         // Results revealed?
-    bool ended;            // Poll ended?
-    uint totalVotes;       // Total votes cast
-    uint optionsCount;     // Number of options
-    bool exists;           // Existence flag
+    string title;               // Unique poll title
+    address admin;              // Poll administrator
+    uint startTime;             // Unix timestamp (UTC) when voting starts
+    uint endTime;               // Unix timestamp (UTC) when voting ends
+    bool revealed;              // Have results been revealed?
+    bool ended;                 // Has poll been manually ended?
+    uint totalVotes;            // Total votes cast
+    uint optionsCount;          // Number of voting options
+    bool exists;                // Existence flag (prevent default confusion)
+    bool tokenVotingEnabled;    // Is token voting available?
+    bool tokenVotingRequired;   // Must voters use tokens?
 }
 ```
 
-**Design Decisions**:
-- `exists` flag prevents default-value confusion
-- `revealed` enables controlled results access
-- `ended` allows manual poll termination
-- Separate `endTime` and `ended` for flexibility
-
-### Option Structure
+### Vote Method Tracking
 
 ```solidity
-struct Option {
-    uint id;               // Option ID (1-indexed)
-    string name;           // Option name (unique per poll)
-    uint votes;            // Vote count
+enum VoteMethod {
+    GasPayment,  // 0: Traditional vote (voter paid gas)
+    Token        // 1: Token vote (token burned, voter or admin paid gas)
 }
+
+mapping(uint256 => mapping(address => VoteMethod)) public voteMethod;
 ```
 
-**Design Decisions**:
-- 1-indexed IDs (0 reserved for "no vote")
-- Name stored for easy retrieval
-- Vote count cached for efficiency
-
-### State Flow Diagram
+### State Mappings
 
 ```
-Poll States:
-┌──────────┐   createPoll    ┌────────┐   vote()    ┌────────┐
-│  NONE    ├────────────────►│ ACTIVE ├────────────►│ ACTIVE │
-└──────────┘                 └───┬────┘             └───┬────┘
-                                 │                      │
-                          endTime│                      │endPoll()
-                           or    │                      │
-                        endPoll()│                      │
-                                 ▼                      │
-                             ┌───────┐ revealResults() │
-                             │ ENDED │◄────────────────┘
-                             └───┬───┘
-                                 │
-                      revealResults()
-                                 │
-                                 ▼
-                          ┌──────────┐
-                          │ REVEALED │
-                          └──────────┘
+Global State:
+├── owner: address
+├── pollsCount: uint
+├── tokenManager: TokenManager
+├── votingPaymaster: VotingPaymaster
+└── pollTitles: mapping(string => bool)
+
+Per-Poll State:
+├── polls: mapping(uint => Poll)
+├── pollOptions: mapping(uint => mapping(uint => string))
+├── votesCount: mapping(uint => mapping(uint => uint))
+├── authorizedVoters: mapping(uint => mapping(address => bool))
+├── hasVoted: mapping(uint => mapping(address => bool))
+├── voterChoice: mapping(uint => mapping(address => uint))
+└── voteMethod: mapping(uint => mapping(address => VoteMethod))
+
+Token System:
+├── pollTokens: mapping(uint => address)  // pollId => VotingToken
+├── allocatedTokens: mapping(uint => mapping(address => uint))
+└── VotingToken per poll with balanceOf mapping
 ```
+
+---
 
 ## 🔒 Security Architecture
 
 ### Access Control Matrix
 
-| Function | Owner | Admin | Authorized Voter | Anyone |
-|----------|-------|-------|------------------|--------|
+| Function | Owner | Poll Admin | Authorized Voter | Anyone |
+|----------|-------|------------|------------------|--------|
 | createPoll | ✅ | ❌ | ❌ | ❌ |
 | addOptionToPoll | ✅ | ✅ | ❌ | ❌ |
 | addVoters | ✅ | ✅ | ❌ | ❌ |
-| removeVoter | ✅ | ✅ | ❌ | ❌ |
-| vote | ❌ | ❌ | ✅ | ❌ |
+| addVotersWithTokens | ✅ | ✅ | ❌ | ❌ |
+| voteInPoll | ❌ | ❌ | ✅ | ❌ |
+| voteInPollWithToken | ❌ | ❌ | ✅ | ❌ |
 | revealResults | ✅ | ✅ | ❌ | ❌ |
 | endPoll | ✅ | ✅ | ❌ | ❌ |
-| View Functions | ✅ | ✅ | ✅ | ✅* |
+| View Functions (pre-reveal) | ✅ | ✅ | Limited | Limited |
+| View Functions (post-reveal) | ✅ | ✅ | ✅ | ✅ |
 
-*Some view functions restricted until results revealed
+### Security Layers
 
-### Security Mechanisms
+```
+┌──────────────────────────────────────────────────────────┐
+│              SECURITY LAYER ARCHITECTURE                  │
+└──────────────────────────────────────────────────────────┘
 
-#### 1. Ownership Pattern
+Layer 1: Input Validation
+├── Zero address checks
+├── Existence checks
+├── Numeric range validation
+└── String length limits
 
-```solidity
-modifier onlyOwner() {
-    require(msg.sender == owner, "Only owner can perform this action.");
-    _;
-}
+Layer 2: Access Control
+├── Owner-only functions (onlyOwner)
+├── Admin-or-owner functions (onlyAdminOrOwner)
+└── Voter authorization checks
+
+Layer 3: State Validation
+├── Poll lifecycle checks
+├── Time window validation
+├── Double-voting prevention
+└── Token balance verification
+
+Layer 4: DoS Prevention
+├── MAX_OPTIONS = 100
+├── MAX_VOTERS_BATCH = 50
+├── MIN_POLL_DURATION = 300s
+└── MAX_FUTURE_START = 30 days
+
+Layer 5: Attack Mitigation
+├── Reentrancy: CEI pattern
+├── Integer overflow: Solidity 0.8+
+├── Replay attacks: Nonces
+├── Signature expiry: Deadlines
+└── Front-running: Hidden votes
 ```
 
-**Protects**: Critical system functions (poll creation, ownership transfer)
+---
 
-#### 2. Admin Pattern
+## 📡 Event Architecture
 
-```solidity
-modifier onlyAdminOrOwner(uint pollId) {
-    require(
-        msg.sender == polls[pollId].admin || msg.sender == owner,
-        "Only poll admin or owner allowed."
-    );
-    _;
-}
-```
+### Production-Grade Events
 
-**Protects**: Poll-specific management functions
-
-#### 3. Duplicate Prevention
+All events use **indexed parameters** for efficient filtering:
 
 ```solidity
-// Poll title uniqueness
-mapping(string => bool) public pollTitles;
-require(!pollTitles[title], "Poll title already exists.");
+// ✅ GOOD: Admin indexed, token flags included
+event PollCreated(
+    uint indexed pollId,
+    string title,
+    address indexed admin,  // ← Can filter by admin
+    uint startTime,
+    uint endTime,
+    bool tokenVotingEnabled,    // ← Frontend doesn't need extra call
+    bool tokenVotingRequired
+);
 
-// Option name uniqueness per poll
-mapping(uint => mapping(string => bool)) public pollOptionNames;
-require(!pollOptionNames[pollId][name], "Option name already exists.");
-
-// Prevent double voting
-mapping(uint => mapping(address => bool)) public hasVoted;
-require(!hasVoted[pollId][msg.sender], "Already voted.");
+// ✅ GOOD: All 3 slots indexed, VoteMethod included
+event Voted(
+    uint indexed pollId,        // ← Filter by poll
+    address indexed voter,      // ← Filter by voter
+    uint indexed optionId,      // ← Filter by option
+    VoteMethod method           // ← Distinguish gas vs token
+);
 ```
 
-#### 4. Authorization System
+### Event Filtering Examples
 
-```solidity
-mapping(uint => mapping(address => bool)) public authorizedVoters;
-require(authorizedVoters[pollId][msg.sender], "Not authorized to vote.");
+```javascript
+// Get all polls created by specific admin
+const adminPolls = await contract.queryFilter(
+    contract.filters.PollCreated(null, null, adminAddress)
+);
+
+// Get all votes by specific user
+const userVotes = await contract.queryFilter(
+    contract.filters.Voted(null, voterAddress)
+);
+
+// Get all votes on specific option in specific poll
+const optionVotes = await contract.queryFilter(
+    contract.filters.Voted(pollId, null, optionId)
+);
+
+// Count vote methods for analytics
+const pollVotes = await contract.queryFilter(contract.filters.Voted(pollId));
+const methodCounts = pollVotes.reduce((acc, event) => {
+    acc[event.args.method === 0 ? 'gas' : 'token']++;
+    return acc;
+}, { gas: 0, token: 0 });
 ```
 
-#### 5. Validation Checks
-
-```solidity
-// Existence checks
-require(polls[pollId].exists, "Poll does not exist.");
-
-// Zero address checks
-require(admin != address(0), "Admin is zero address.");
-
-// Time validations
-require(block.timestamp <= polls[pollId].endTime, "Poll has ended.");
-```
-
-### Attack Prevention
-
-| Attack Vector | Mitigation |
-|--------------|------------|
-| Reentrancy | No external calls in state-changing functions |
-| Integer Overflow | Solidity 0.8+ automatic checks |
-| Unauthorized Access | Multi-layer access control |
-| Double Voting | hasVoted mapping |
-| Griefing | Gas-optimized loops, batch operations |
-| Front-running | Results hidden until revelation |
+---
 
 ## ⚡ Gas Optimization
 
 ### Optimization Techniques
 
-#### 1. Storage Optimization
-
+#### 1. Storage Packing
 ```solidity
-// Pack related bool values
 struct Poll {
-    // ... other fields
-    bool revealed;    // 1 byte
-    bool ended;       // 1 byte
-    bool exists;      // 1 byte
-    // Packed into single storage slot with other small types
+    string title;           // Dynamic
+    address admin;          // 20 bytes
+    uint startTime;         // 32 bytes
+    uint endTime;           // 32 bytes
+    bool revealed;          // 1 byte  ┐
+    bool ended;             // 1 byte  │ Packed into
+    bool exists;            // 1 byte  │ same slot
+    bool tokenVotingEnabled;// 1 byte  │
+    bool tokenVotingRequired;// 1 byte ┘
+    uint totalVotes;        // 32 bytes
+    uint optionsCount;      // 32 bytes
 }
 ```
 
 #### 2. Batch Operations
-
 ```solidity
-// Add multiple voters in one transaction
-function addVoters(uint pollId, address[] calldata voters) external {
+// ✅ GOOD: Add multiple voters in one transaction
+function addVoters(uint pollId, address[] calldata voters) public {
     for(uint i = 0; i < voters.length; i++) {
         authorizedVoters[pollId][voters[i]] = true;
     }
 }
+
+// ❌ BAD: Would require N separate transactions
 ```
 
-#### 3. Efficient Data Structures
-
+#### 3. calldata vs memory
 ```solidity
-// Use mappings instead of arrays where possible
-mapping(uint => Poll) public polls;  // O(1) access
-```
-
-#### 4. calldata vs memory
-
-```solidity
-// Use calldata for external function parameters (saves gas)
+// ✅ GOOD: calldata for external functions (saves gas)
 function createPoll(string calldata title, ...) external {
     // Implementation
 }
+
+// ❌ BAD: memory for external would copy data
 ```
 
-### Gas Cost Analysis
-
-| Operation | Gas Cost (approx) |
-|-----------|------------------|
-| Deploy Contract | 2,500,000 |
-| Create Poll | 200,000 |
-| Add Option | 100,000 |
-| Add Voter | 50,000 |
-| Add 10 Voters (batch) | 200,000 |
-| Cast Vote | 80,000 |
-| Reveal Results | 50,000 |
-
-## 🚀 Deployment Architecture
-
-### Network Support
-
-```
-┌──────────────────────────────────────────────┐
-│         Supported Networks                   │
-├──────────────────────────────────────────────┤
-│                                              │
-│  Development:                                │
-│  └── Hardhat Local Network                  │
-│                                              │
-│  Testing:                                    │
-│  ├── Hardhat Mainnet (Simulated)            │
-│  ├── Hardhat OP (Optimism Simulated)        │
-│  └── Sepolia Testnet                        │
-│                                              │
-│  Production:                                 │
-│  ├── Ethereum Mainnet                       │
-│  └── Layer 2 Solutions (Future)             │
-│                                              │
-└──────────────────────────────────────────────┘
-```
-
-### Deployment Process
-
-```
-┌─────────────────────────────────────────────┐
-│        Deployment Pipeline                   │
-└─────────────────────────────────────────────┘
-
-1. Compile
-   └── npx hardhat compile
-          │
-          ▼
-2. Test
-   └── npx hardhat test
-          │
-          ▼
-3. Deploy (Testnet)
-   └── npx hardhat ignition deploy
-          │
-          ▼
-4. Verify
-   └── npx hardhat verify
-          │
-          ▼
-5. Test (Live)
-   └── Manual testing
-          │
-          ▼
-6. Audit
-   └── Security audit
-          │
-          ▼
-7. Deploy (Mainnet)
-   └── Production deployment
-          │
-          ▼
-8. Monitor
-   └── Ongoing monitoring
-```
-
-## 🎨 Design Patterns
-
-### 1. Ownership Pattern
-
-**Purpose**: Centralized control for critical operations
-
-**Implementation**:
+#### 4. Short-Circuit Evaluation
 ```solidity
-contract Ownable {
-    address public owner;
-    
-    constructor() {
-        owner = msg.sender;
-    }
-    
-    modifier onlyOwner() {
-        require(msg.sender == owner);
-        _;
-    }
-}
+require(msg.sender == admin || msg.sender == owner, "Not authorized");
+// ↑ Stops at first true condition
 ```
 
-### 2. Access Control Pattern
+### Gas Cost Breakdown
 
-**Purpose**: Role-based permissions
-
-**Implementation**: Multi-tier access (Owner, Admin, Voter)
-
-### 3. State Machine Pattern
-
-**Purpose**: Manage poll lifecycle
-
-**States**: Created → Active → Ended → Revealed
-
-### 4. Mapping Pattern
-
-**Purpose**: Efficient data storage and retrieval
-
-**Implementation**: Nested mappings for relational data
-
-### 5. Event Pattern
-
-**Purpose**: Off-chain notification and logging
-
-**Implementation**:
-```solidity
-event PollCreated(uint indexed pollId, string title, address admin, uint endTime);
-emit PollCreated(pid, title, admin, p.endTime);
-```
-
-### 6. Checks-Effects-Interactions
-
-**Purpose**: Prevent reentrancy attacks
-
-**Pattern**:
-```solidity
-function vote(uint pollId, uint optionId) external {
-    // 1. Checks
-    require(polls[pollId].exists, "Poll does not exist.");
-    require(!hasVoted[pollId][msg.sender], "Already voted.");
-    
-    // 2. Effects
-    hasVoted[pollId][msg.sender] = true;
-    voterChoice[pollId][msg.sender] = optionId;
-    options[pollId][optionId].votes += 1;
-    
-    // 3. Interactions (none in this case)
-    emit Voted(pollId, msg.sender, optionId);
-}
-```
-
-## 🔮 Future Enhancements
-
-### Planned Features
-
-#### 1. Delegate Voting
-
-Allow voters to delegate their voting power to another address.
-
-```solidity
-mapping(uint => mapping(address => address)) public delegates;
-
-function delegateVote(uint pollId, address delegate) external {
-    delegates[pollId][msg.sender] = delegate;
-}
-```
-
-#### 2. Weighted Voting
-
-Enable token-based voting weight.
-
-```solidity
-function vote(uint pollId, uint optionId, uint weight) external {
-    // Verify weight based on token balance
-}
-```
-
-#### 3. Anonymous Voting
-
-Implement zero-knowledge proofs for vote privacy.
-
-#### 4. Multi-Choice Voting
-
-Allow voters to select multiple options.
-
-```solidity
-struct Vote {
-    uint[] choices;
-    uint[] weights;
-}
-```
-
-#### 5. Time-Locked Reveals
-
-Automatic results revelation after poll ends.
-
-#### 6. Vote Modification
-
-Allow voters to change vote before poll ends.
-
-```solidity
-function modifyVote(uint pollId, uint newOptionId) external {
-    require(!polls[pollId].ended, "Cannot modify after end.");
-    // Implementation
-}
-```
-
-### Scalability Improvements
-
-- Layer 2 integration (Optimism, Arbitrum)
-- IPFS for large poll data
-- Snapshot voting for gas efficiency
-- Batch result processing
-
-### Integration Possibilities
-
-- DAO governance integration
-- Token-gated voting
-- NFT-based voter eligibility
-- Oracle integration for external data
-
-## 📚 Technical Specifications
-
-### Solidity Version
-
-- **Version**: 0.8.20+
-- **Reason**: Built-in overflow checks, modern features
-
-### Dependencies
-
-```json
-{
-  "hardhat": "^3.1.3",
-  "ethers": "^6.16.0",
-  "solidity": "^0.8.20"
-}
-```
-
-### Storage Layout
-
-Total storage slots used (approximate):
-- Owner: 1 slot
-- PollsCount: 1 slot
-- Mappings: Dynamic
-
-### Function Signatures
-
-```
-createPoll(string,address,uint256): 0x...
-vote(uint256,uint256): 0x...
-revealResults(uint256): 0x...
-```
-
-## 🔍 Monitoring & Analytics
-
-### Event Monitoring
-
-Monitor these events for system health:
-- `PollCreated` - Track poll creation rate
-- `Voted` - Track voting activity
-- `Revealed` - Track completed polls
-
-### Metrics to Track
-
-- Total polls created
-- Active polls
-- Total votes cast
-- Average votes per poll
-- Gas costs per operation
-
-## 📖 References
-
-- [Solidity Documentation](https://docs.soliditylang.org/)
-- [Ethereum Yellow Paper](https://ethereum.github.io/yellowpaper/paper.pdf)
-- [Smart Contract Best Practices](https://consensys.github.io/smart-contract-best-practices/)
-- [OpenZeppelin Documentation](https://docs.openzeppelin.com/)
+| Operation | Gas Cost | Notes |
+|-----------|----------|-------|
+| Deploy ElectionsManager | ~2,800,000 | Main contract |
+| Deploy TokenManager | ~1,500,000 | Token factory |
+| Deploy VotingPaymaster | ~1,200,000 | Paymaster |
+| Deploy VotingToken | ~800,000 | Per poll (if token enabled) |
+| Create Poll (no token) | ~200,000 | Basic poll |
+| Create Poll (with token) | ~1,000,000 | Includes token deployment |
+| Add Option | ~100,000 | Per option |
+| Add Voter | ~50,000 | Single voter |
+| Add 10 Voters (batch) | ~200,000 | Batch operation |
+| Vote (traditional) | ~80,000 | Voter pays |
+| Vote (with token) | ~120,000 | Token burn included |
+| Vote (gasless) | ~150,000 | Paymaster pays |
+| Reveal Results | ~50,000 | One-time per poll |
 
 ---
 
-**Last Updated**: 2026-02-08 14:15:00  
-**Version**: 1.0.0  
+## 🎨 Design Patterns
+
+### 1. Proxy Pattern (UUPS)
+**Purpose**: Upgradeable contracts without losing data
+**Implementation**: ERC1967Proxy + UUPSUpgradeable
+
+### 2. Factory Pattern
+**Purpose**: Create multiple token contracts
+**Implementation**: TokenManager creates VotingToken instances
+
+### 3. Meta-Transaction Pattern
+**Purpose**: Gasless voting
+**Implementation**: EIP-712 signatures + VotingPaymaster
+
+### 4. Access Control Pattern
+**Purpose**: Role-based permissions
+**Implementation**: onlyOwner, onlyAdminOrOwner modifiers
+
+### 5. Checks-Effects-Interactions
+**Purpose**: Prevent reentrancy
+**Pattern**: Always validate → update state → external calls
+
+```solidity
+function voteInPoll(uint pollId, uint optionId) external {
+    // 1. CHECKS
+    require(polls[pollId].exists, "Poll does not exist.");
+    require(!hasVoted[pollId][msg.sender], "Already voted.");
+
+    // 2. EFFECTS
+    hasVoted[pollId][msg.sender] = true;
+    voterChoice[pollId][msg.sender] = optionId;
+    options[pollId][optionId].votes += 1;
+
+    // 3. INTERACTIONS
+    emit Voted(pollId, msg.sender, optionId, VoteMethod.GasPayment);
+}
+```
+
+### 6. Event Pattern
+**Purpose**: Off-chain notification
+**Implementation**: Production-grade indexed events
+
+### 7. State Machine Pattern
+**Purpose**: Poll lifecycle management
+**States**: Not Started → Active → Ended → Revealed
+
+---
+
+## 📖 References
+
+- [EIP-712: Typed Structured Data](https://eips.ethereum.org/EIPS/eip-712)
+- [EIP-1967: Proxy Storage Slots](https://eips.ethereum.org/EIPS/eip-1967)
+- [UUPS Proxies](https://docs.openzeppelin.com/contracts/4.x/api/proxy#UUPSUpgradeable)
+- [Solidity Documentation](https://docs.soliditylang.org/)
+- [Smart Contract Best Practices](https://consensys.github.io/smart-contract-best-practices/)
+
+---
+
+**Version**: 2.0.0
+**Last Updated**: 2026-02-12
 **Author**: soralank
+**Status**: Production-Ready ✅
