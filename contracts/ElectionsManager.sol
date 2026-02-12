@@ -74,13 +74,13 @@ contract ElectionsManager is TokenIntegratedVoting {
     // pollId => voter => is authorized to vote
     mapping(uint => mapping(address => bool)) public authorizedVoters;
 
-    event PollCreated(uint indexed pollId, string title, address admin, uint startTime, uint endTime);
+    event PollCreated(uint indexed pollId, string title, address indexed admin, uint startTime, uint endTime, bool tokenVotingEnabled, bool tokenVotingRequired);
     event OptionAdded(uint indexed pollId, uint indexed optionId, string name);
-    event Voted(uint indexed pollId, address voter, uint optionId);
-    event Revealed(uint indexed pollId);
-    event Ended(uint indexed pollId);
-    event VoterAdded(uint indexed pollId, address voter);
-    event VoterRemoved(uint indexed pollId, address voter);
+    event Voted(uint indexed pollId, address indexed voter, uint indexed optionId, VoteMethod method);
+    event ResultsRevealed(uint indexed pollId);
+    event PollEnded(uint indexed pollId);
+    event VoterAuthorized(uint indexed pollId, address indexed voter);
+    event VoterUnauthorized(uint indexed pollId, address indexed voter);
 
     modifier onlyAdminOrOwner(uint pollId) {
         require(msg.sender == polls[pollId].admin || msg.sender == owner, "Only poll admin or owner allowed.");
@@ -131,7 +131,7 @@ contract ElectionsManager is TokenIntegratedVoting {
             tokenManager.createPollToken(pid, tokenName, tokenSymbol);
         }
 
-        emit PollCreated(pid, title, admin, startTime, p.endTime);
+        emit PollCreated(pid, title, admin, startTime, p.endTime, enableTokenVoting, requireTokenVoting);
         return pid;
     }
 
@@ -185,7 +185,7 @@ contract ElectionsManager is TokenIntegratedVoting {
         require(!authorizedVoters[pollId][voter], "Voter already authorized.");
 
         authorizedVoters[pollId][voter] = true;
-        emit VoterAdded(pollId, voter);
+        emit VoterAuthorized(pollId, voter);
     }
 
     function addVoters(uint pollId, address[] calldata voters) public onlyAdminOrOwner(pollId) {
@@ -199,7 +199,7 @@ contract ElectionsManager is TokenIntegratedVoting {
             require(voter != address(0), "Invalid voter address.");
             if (!authorizedVoters[pollId][voter]) {
                 authorizedVoters[pollId][voter] = true;
-                emit VoterAdded(pollId, voter);
+                emit VoterAuthorized(pollId, voter);
             }
         }
     }
@@ -212,7 +212,7 @@ contract ElectionsManager is TokenIntegratedVoting {
         require(!hasVoted[pollId][voter], "Cannot remove voter who already voted.");
 
         authorizedVoters[pollId][voter] = false;
-        emit VoterRemoved(pollId, voter);
+        emit VoterUnauthorized(pollId, voter);
     }
 
     function getPollsCount() external view returns (uint) {
@@ -257,7 +257,7 @@ contract ElectionsManager is TokenIntegratedVoting {
         // Track vote method
         voteMethod[pollId][msg.sender] = VoteMethod.GasPayment;
 
-        emit Voted(pollId, msg.sender, optionId);
+        emit Voted(pollId, msg.sender, optionId, VoteMethod.GasPayment);
     }
 
     /**
@@ -298,7 +298,7 @@ contract ElectionsManager is TokenIntegratedVoting {
         // Track vote method
         voteMethod[pollId][voter] = VoteMethod.Token;
 
-        emit Voted(pollId, voter, optionId);
+        emit Voted(pollId, voter, optionId, VoteMethod.Token);
     }
 
     /**
@@ -410,7 +410,7 @@ contract ElectionsManager is TokenIntegratedVoting {
         require(msg.sender == polls[pollId].admin || msg.sender == owner, "Only poll admin or owner allowed.");
         require(_hasEnded(polls[pollId].endTime), "Cannot reveal before poll end plus buffer.");
         polls[pollId].revealed = true;
-        emit Revealed(pollId);
+        emit ResultsRevealed(pollId);
     }
 
     function endPoll(uint pollId) external {
@@ -418,7 +418,7 @@ contract ElectionsManager is TokenIntegratedVoting {
         require(msg.sender == polls[pollId].admin || msg.sender == owner, "Only poll admin or owner allowed.");
         require(_hasEnded(polls[pollId].endTime), "Cannot end before end time plus buffer.");
         polls[pollId].ended = true;
-        emit Ended(pollId);
+        emit PollEnded(pollId);
     }
 
     // clear revert reasons for unsupported interactions (helps debugging / tooling)

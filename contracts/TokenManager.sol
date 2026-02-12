@@ -25,7 +25,7 @@ contract TokenManager {
     uint256 public constant TOKENS_PER_VOTE = 1;
 
     // Events
-    event TokenCreated(uint256 indexed pollId, address tokenAddress, string name, string symbol);
+    event TokenCreated(uint256 indexed pollId, address indexed tokenAddress, string name, string symbol);
     event TokensAllocated(uint256 indexed pollId, address indexed voter, uint256 amount);
     event TokensBurned(uint256 indexed pollId, address indexed voter, uint256 amount);
     event TokenVotingEnabled(uint256 indexed pollId);

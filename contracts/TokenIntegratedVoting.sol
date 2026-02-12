@@ -43,7 +43,7 @@ contract TokenIntegratedVoting is TimeValidator {
         uint256 tokensPerVoter,
         bool allowGaslessVoting
     );
-    event VotedWithToken(uint256 indexed pollId, address indexed voter, uint256 optionId);
+    event VotedWithToken(uint256 indexed pollId, address indexed voter, uint256 indexed optionId);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
 
