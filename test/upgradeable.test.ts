@@ -58,7 +58,7 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
       const initializeData = implementation.interface.encodeFunctionData("initialize", []);
 
       // Deploy proxy
-      const ERC1967Proxy = await ethers.getContractFactory("ERC1967Proxy");
+      const ERC1967Proxy = await ethers.getContractFactory("TestERC1967Proxy");
       const proxy = await ERC1967Proxy.deploy(implementation.target, initializeData);
       await proxy.waitForDeployment();
 
@@ -192,7 +192,7 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
       // Try to upgrade as non-owner (should fail)
       await expect(
         electionsManagerV2.connect(alice).upgradeToAndCall(anotherImpl.target, initData)
-      ).to.be.reverted;
+      ).to.be.revertedWithCustomError(electionsManagerV2, "OwnableUnauthorizedAccount");
 
       console.log("✓ Non-owner cannot upgrade (security check passed)");
     });

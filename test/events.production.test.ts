@@ -374,8 +374,8 @@ describe("Production-Grade Events Verification", function () {
             await electionsManager.createPoll(
                 "Event Name Test Poll",
                 admin.address,
-                now + 10,
-                100,
+                now + 100,
+                3600,  // 1 hour (must be >= 300 seconds)
                 false,
                 false
             );
@@ -385,12 +385,12 @@ describe("Production-Grade Events Verification", function () {
             await electionsManager.connect(admin).addVoter(pollId, alice.address);
 
             // Vote and wait for poll to end
-            await ethers.provider.send("evm_setNextBlockTimestamp", [now + 20]);
+            await ethers.provider.send("evm_setNextBlockTimestamp", [now + 110]);
             await ethers.provider.send("evm_mine");
             await electionsManager.connect(alice).voteInPoll(pollId, 1);
 
-            // Fast forward past end time + buffer
-            await ethers.provider.send("evm_setNextBlockTimestamp", [now + 200]);
+            // Fast forward past end time + buffer (start + duration + REVEAL_BUFFER)
+            await ethers.provider.send("evm_setNextBlockTimestamp", [now + 100 + 3600 + 130]);
             await ethers.provider.send("evm_mine");
         });
 
@@ -438,15 +438,18 @@ describe("Production-Grade Events Verification", function () {
     describe("TokenManager Events", function () {
         it("should emit TokenCreated with indexed token address", async function () {
             const now = await getCurrentTimestamp();
-            await electionsManager.createPoll(
+            const txPoll = await electionsManager.createPoll(
                 "Token Event Test",
                 admin.address,
                 now + 100,
-                1000,
+                3600,  // 1 hour (must be >= 300 seconds)
                 true,  // Enable token voting (creates token)
                 false
             );
-            const pollId = 6;
+            await txPoll.wait();
+
+            // Get the actual pollId created
+            const pollId = await electionsManager.pollsCount();
 
             // Find TokenCreated event
             const filter = tokenManager.filters.TokenCreated(pollId);
@@ -479,20 +482,23 @@ describe("Production-Grade Events Verification", function () {
     describe("TokenIntegratedVoting Events", function () {
         it("should emit VotedWithToken with all indexed parameters", async function () {
             const now = await getCurrentTimestamp();
-            await electionsManager.createPoll(
+            const txPoll = await electionsManager.createPoll(
                 "Integrated Voting Test",
                 admin.address,
-                now + 10,
-                1000,
+                now + 100,
+                3600,  // 1 hour (must be >= 300 seconds)
                 true,
                 false
             );
-            const pollId = 7;
+            await txPoll.wait();
+
+            // Get the actual pollId created
+            const pollId = await electionsManager.pollsCount();
 
             await electionsManager.connect(admin).addOptionToPoll(pollId, "Option Y");
             await electionsManager.connect(admin).addVotersWithTokens(pollId, [alice.address], 5);
 
-            await ethers.provider.send("evm_setNextBlockTimestamp", [now + 20]);
+            await ethers.provider.send("evm_setNextBlockTimestamp", [now + 110]);
             await ethers.provider.send("evm_mine");
 
             const tx = await electionsManager.connect(alice).voteInPollWithToken(pollId, 1, alice.address);
