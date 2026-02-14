@@ -27,29 +27,14 @@ This document provides a comprehensive reference of all error codes and messages
 - **Frontend Action**: Display validation error, suggest alternative title
 - **HTTP Status**: 400
 
-### `"Poll already started; cannot add options."`
-- **When**: Trying to add options after poll has started
-- **Frontend Action**: Display "Poll is live, options locked" message
+### `"Poll started"`
+- **When**: Trying to add/remove options or voters after poll has started
+- **Frontend Action**: Display "Poll is live, modifications locked" message
 - **HTTP Status**: 400
 
-### `"Poll already started; cannot add voters."`
-- **When**: Trying to add voters after poll has started
-- **Frontend Action**: Display "Poll is live, voter list locked" message
-- **HTTP Status**: 400
-
-### `"Poll already started; cannot remove voters."`
-- **When**: Trying to remove voters after poll has started
-- **Frontend Action**: Display "Poll is live, cannot modify voter list" message
-- **HTTP Status**: 400
-
-### `"Poll ended; cannot add options."`
-- **When**: Trying to add options to an ended poll
+### `"Poll ended"`
+- **When**: Trying to add options or voters to an ended poll
 - **Frontend Action**: Display "Poll has ended" message
-- **HTTP Status**: 400
-
-### `"Poll ended; cannot add voters."`
-- **When**: Trying to add voters to an ended poll
-- **Frontend Action**: Display "Poll has ended, cannot add voters" message
 - **HTTP Status**: 400
 
 ### `"Poll ended; cannot remove voters."`
@@ -135,12 +120,12 @@ This document provides a comprehensive reference of all error codes and messages
 - **Frontend Action**: Display "Invalid option selected" and reload options
 - **HTTP Status**: 400
 
-### `"This poll requires token-based voting. Use voteInPollWithToken()"`
+### `"Token voting required"`
 - **When**: Using traditional vote method on a token-required poll
 - **Frontend Action**: Display "This poll requires token-based voting" with token balance info
 - **HTTP Status**: 400
 
-### `"Token voting not enabled for this poll."`
+### `"Token voting not enabled"`
 - **When**: Attempting token vote on a non-token poll
 - **Frontend Action**: Display "Token voting is not enabled for this poll"
 - **HTTP Status**: 400
@@ -321,7 +306,7 @@ This document provides a comprehensive reference of all error codes and messages
 - **Frontend Action**: Display "Invalid time range"
 - **HTTP Status**: 400
 
-### `"Cannot reveal before poll end plus buffer."`
+### `"Poll not ended"`
 - **When**: Revealing results before poll end + 30 second buffer
 - **Frontend Action**: Display poll end time and countdown
 - **HTTP Status**: 400
@@ -383,6 +368,108 @@ This document provides a comprehensive reference of all error codes and messages
 ### `"Unknown function called."`
 - **When**: Calling non-existent function
 - **Frontend Action**: Display "Invalid operation"
+- **HTTP Status**: 400
+
+---
+
+## Trust & Secret Ballot Errors (v4.0)
+
+### Infrastructure Lock Errors
+
+#### `"Infra locked"`
+- **When**: Attempting to change TokenManager or VotingPaymaster after the first poll is created
+- **Frontend Action**: Display "Infrastructure contracts are permanently locked after first poll creation"
+- **HTTP Status**: 403
+
+### Secret Ballot Errors (ElectionsManager)
+
+#### `"Secret ballot enabled. Use commitVote()."`
+- **When**: Attempting plain vote/token vote on a secret ballot poll
+- **Frontend Action**: Display "This is a secret ballot poll. Use the commit-reveal workflow instead."
+- **HTTP Status**: 400
+
+#### `"Secret ballot: delegation uses commitVote()."`
+- **When**: Attempting delegation on a secret ballot poll
+- **Frontend Action**: Display "Secret ballot polls do not support direct delegation. Use commit-reveal."
+- **HTTP Status**: 400
+
+#### `"Only SBM"`
+- **When**: Non-SecretBallotManager contract calls `recordSecretVote()` or `burnTokenForCommit()`
+- **Frontend Action**: Internal error — should not occur in normal flow
+- **HTTP Status**: 403
+
+#### `"Already revealed."`
+- **When**: Calling `revealResults()` on a poll that has already been revealed
+- **Frontend Action**: Display "Results have already been revealed for this poll"
+- **HTTP Status**: 400
+
+### Secret Ballot Errors (SecretBallotManager)
+
+#### `"Secret ballot not enabled."`
+- **When**: Attempting commit on a non-secret-ballot poll
+- **Frontend Action**: Display "Secret ballot is not enabled for this poll"
+- **HTTP Status**: 400
+
+#### `"Not a secret ballot poll."`
+- **When**: Attempting reveal on a non-secret-ballot poll
+- **Frontend Action**: Display "This poll does not use secret ballot"
+- **HTTP Status**: 400
+
+#### `"Not authorized."`
+- **When**: Unauthorized voter attempts commit
+- **Frontend Action**: Display "You are not authorized to vote in this poll"
+- **HTTP Status**: 403
+
+#### `"Not in commit phase."`
+- **When**: Committing outside the active voting period
+- **Frontend Action**: Display "Commit phase has ended" or "Poll has not started yet"
+- **HTTP Status**: 400
+
+#### `"Already committed."`
+- **When**: Voter attempts to commit a second time
+- **Frontend Action**: Display "You have already committed your vote. Wait for the reveal phase."
+- **HTTP Status**: 400
+
+#### `"Delegated vote."`
+- **When**: Voter who has delegated tries to commit
+- **Frontend Action**: Display "You have delegated your vote and cannot commit"
+- **HTTP Status**: 400
+
+#### `"Invalid commit hash."`
+- **When**: Providing a zero bytes32 commit hash
+- **Frontend Action**: Display "Invalid commitment. Please generate a valid hash."
+- **HTTP Status**: 400
+
+#### `"No commitment found."`
+- **When**: Revealing without having committed
+- **Frontend Action**: Display "You did not commit a vote for this poll"
+- **HTTP Status**: 400
+
+#### `"Not in reveal period."`
+- **When**: Attempting reveal during commit phase or after reveal window closes
+- **Frontend Action**: Display countdown to reveal period or "Reveal period has ended"
+- **HTTP Status**: 400
+
+#### `"Invalid reveal: hash mismatch."`
+- **When**: Reveal data doesn't match the committed hash
+- **Frontend Action**: Display "Your reveal data does not match your commitment. Check optionId and salt."
+- **HTTP Status**: 400
+
+#### `"Token voting not enabled."`
+- **When**: Using `commitVoteWithToken()` on a poll without token voting
+- **Frontend Action**: Display "Token voting is not enabled for this poll"
+- **HTTP Status**: 400
+
+### Metadata Lock Errors
+
+#### `"Poll already started."`
+- **When**: Attempting `setPollMetadata()`, `enableSecretBallot()`, or `enableQuadraticVoting()` after poll has started
+- **Frontend Action**: Display "This setting can only be changed before the poll starts"
+- **HTTP Status**: 400
+
+#### `"Metadata URI cannot be empty."`
+- **When**: Providing empty string for metadata URI
+- **Frontend Action**: Display "Please provide a valid IPFS URI"
 - **HTTP Status**: 400
 
 ---
@@ -461,12 +548,13 @@ Errors that cannot be retried:
 
 ## Testing Error Handling
 
-All 156 tests pass, covering:
+All 312 tests pass, covering:
 - ✅ All error conditions
 - ✅ Authorization checks
 - ✅ Time validations
-- ✅ Token  operations
+- ✅ Token operations
 - ✅ Gasless voting workflow
+- ✅ Trust features (infrastructure lock, secret ballot, democratic reveal)
 - ✅ Edge cases and security
 
 Run tests:
@@ -490,6 +578,82 @@ npx hardhat test
 
 6. **Transaction Hashes**: Always provide transaction hash to users for failed transactions so they can investigate on block explorer.
 
+7. **Secret Ballot UX**: Commit-reveal errors should guide users through the two-phase workflow. Store the salt securely client-side between commit and reveal phases.
+
 ---
 
-*Last Updated: Implementation Complete - All 156 Tests Passing*
+## Franchise Management Errors
+
+### `"No franchise"`
+- **When**: Trying to create a franchise poll without having an active franchise
+- **Frontend Action**: Display "You don't have an active franchise"
+- **HTTP Status**: 403
+
+### `"Franchise expired"`
+- **When**: Trying to create a poll or transfer after franchise time limit
+- **Frontend Action**: Display "Your franchise has expired" with expiry date
+- **HTTP Status**: 403
+
+### `"Max polls reached"`
+- **When**: All allocated polls have been used
+- **Frontend Action**: Display "You have used all your allocated polls"
+- **HTTP Status**: 403
+
+### `"Insufficient fee"`
+- **When**: Not sending enough ETH for poll creation (2nd poll onward)
+- **Frontend Action**: Display required fee amount
+- **HTTP Status**: 402
+
+### `"Active franchise exists"`
+- **When**: Granting a franchise to an address that already has an active one
+- **Frontend Action**: Display "This address already has an active franchise"
+- **HTTP Status**: 409
+
+### `"Owner cannot be franchisee"`
+- **When**: Trying to grant a franchise to the contract owner
+- **Frontend Action**: Display "Owner cannot be a franchisee"
+- **HTTP Status**: 400
+
+### `"Polls: 1-100"`
+- **When**: Granting a franchise with 0 or >100 max polls
+- **Frontend Action**: Display "Polls must be between 1 and 100"
+- **HTTP Status**: 400
+
+### `"Duration must be > 0"`
+- **When**: Granting a franchise with zero duration
+- **Frontend Action**: Display "Duration must be greater than 0"
+- **HTTP Status**: 400
+
+### `"Not franchisee"`
+- **When**: Non-franchisee trying to request a transfer
+- **Frontend Action**: Display "Only the franchise holder can request transfers"
+- **HTTP Status**: 403
+
+### `"Transfer pending"`
+- **When**: Requesting a second transfer while one is pending
+- **Frontend Action**: Display "A transfer request is already pending"
+- **HTTP Status**: 409
+
+### `"Insufficient transfer fee"`
+- **When**: Not sending enough ETH for transfer request
+- **Frontend Action**: Display required transfer fee
+- **HTTP Status**: 402
+
+### `"Target has active franchise"`
+- **When**: Trying to transfer to someone who already has a franchise
+- **Frontend Action**: Display "Target address already has an active franchise"
+- **HTTP Status**: 409
+
+### `"No pending transfer"`
+- **When**: Trying to approve/reject a transfer that doesn't exist
+- **Frontend Action**: Display "No pending transfer to process"
+- **HTTP Status**: 404
+
+### `"Not authorized"`
+- **When**: Non-owner/non-franchise-manager calling createPoll on ElectionsManager
+- **Frontend Action**: Display "Not authorized to create polls"
+- **HTTP Status**: 403
+
+---
+
+*Last Updated: v4.1 - 381 Tests Passing*

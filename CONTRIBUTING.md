@@ -363,7 +363,8 @@ describe("MyFeature", function () {
 2. **Integration Tests**: Test contract interactions
 3. **Edge Cases**: Boundary conditions and error scenarios
 4. **Security Tests**: Access control and attack vectors
-5. **Gas Tests**: Ensure operations are gas-efficient
+5. **Trust Tests**: Infrastructure lock, secret ballot, democratic reveal
+6. **Gas Tests**: Ensure operations are gas-efficient
 
 ## 📝 Documentation
 

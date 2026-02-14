@@ -413,26 +413,6 @@ describe("Production-Grade Events Verification", function () {
             expect(event).to.not.be.undefined;
             console.log("✅ Event properly named 'ResultsRevealed' (production-grade naming)");
         });
-
-        it("should emit PollEnded event (not 'Ended')", async function () {
-            const tx = await electionsManager.connect(admin).endPoll(pollId);
-            const receipt = await tx.wait();
-
-            const event = receipt.logs.find((log: any) => {
-                try {
-                    const parsed = electionsManager.interface.parseLog({
-                        topics: log.topics,
-                        data: log.data
-                    });
-                    return parsed?.name === "PollEnded";
-                } catch {
-                    return false;
-                }
-            });
-
-            expect(event).to.not.be.undefined;
-            console.log("✅ Event properly named 'PollEnded' (production-grade naming)");
-        });
     });
 
     describe("TokenManager Events", function () {

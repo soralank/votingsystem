@@ -232,7 +232,7 @@ describe("ElectionsManager - Token Integration", function () {
 
       await expect(
         electionsManager.connect(bob).voteInPoll(tokenOnlyPollId, 1)
-      ).to.be.revertedWith("This poll requires token-based voting. Use voteInPollWithToken()");
+      ).to.be.revertedWith("Token voting required");
     });
   });
 
@@ -313,7 +313,7 @@ describe("ElectionsManager - Token Integration", function () {
 
       await expect(
         electionsManager.connect(alice).voteInPollWithToken(noTokenPollId, 1, alice.address)
-      ).to.be.revertedWith("Token voting not enabled for this poll.");
+      ).to.be.revertedWith("Token voting not enabled");
     });
   });
 

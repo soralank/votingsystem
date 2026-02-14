@@ -1,0 +1,100 @@
+specVersion: 0.0.5
+schema:
+  file: ./subgraph/schema.graphql
+dataSources:
+  - kind: ethereum
+    name: ElectionsManager
+    network: mainnet
+    source:
+      abi: ElectionsManager
+      # address: "0x..." # Set after deployment
+      # startBlock: 0     # Set to deployment block
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Poll
+        - Vote
+        - Voter
+        - Delegation
+        - Option
+      abis:
+        - name: ElectionsManager
+          file: ./artifacts/contracts/ElectionsManager.sol/ElectionsManager.json
+      eventHandlers:
+        - event: PollCreated(indexed uint256,string,indexed address,uint256,uint256,bool,bool)
+          handler: handlePollCreated
+        - event: OptionAdded(indexed uint256,indexed uint256,string)
+          handler: handleOptionAdded
+        - event: Voted(indexed uint256,indexed address,indexed uint256,uint8)
+          handler: handleVoted
+        - event: VotedMultiChoice(indexed uint256,indexed address,uint256[],uint8)
+          handler: handleVotedMultiChoice
+        - event: VotedQuadratic(indexed uint256,indexed address,uint256[],uint256[],uint256)
+          handler: handleVotedQuadratic
+        - event: VoteDelegated(indexed uint256,indexed address,indexed address)
+          handler: handleVoteDelegated
+        - event: DelegationRemoved(indexed uint256,indexed address,indexed address)
+          handler: handleDelegationRemoved
+        - event: VotedAsDelegate(indexed uint256,indexed address,indexed address,uint256)
+          handler: handleVotedAsDelegate
+        - event: ResultsRevealed(indexed uint256)
+          handler: handleResultsRevealed
+        - event: VoterAuthorized(indexed uint256,indexed address)
+          handler: handleVoterAuthorized
+        - event: VoterUnauthorized(indexed uint256,indexed address)
+          handler: handleVoterUnauthorized
+        - event: PollMetadataSet(indexed uint256,string)
+          handler: handlePollMetadataSet
+        - event: MultiChoiceConfigured(indexed uint256,uint256)
+          handler: handleMultiChoiceConfigured
+        - event: QuadraticVotingEnabled(indexed uint256)
+          handler: handleQuadraticVotingEnabled
+      file: ./subgraph/mapping.ts
+
+  - kind: ethereum
+    name: TokenManager
+    network: mainnet
+    source:
+      abi: TokenManager
+      # address: "0x..." # Set after deployment
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - TokenAllocation
+      abis:
+        - name: TokenManager
+          file: ./artifacts/contracts/TokenManager.sol/TokenManager.json
+      eventHandlers:
+        - event: TokenCreated(indexed uint256,indexed address,string,string)
+          handler: handleTokenCreated
+        - event: TokensAllocated(indexed uint256,indexed address,uint256)
+          handler: handleTokensAllocated
+        - event: TokensBurned(indexed uint256,indexed address,uint256)
+          handler: handleTokensBurned
+      file: ./subgraph/tokenMapping.ts
+
+  - kind: ethereum
+    name: VotingPaymaster
+    network: mainnet
+    source:
+      abi: VotingPaymaster
+      # address: "0x..." # Set after deployment
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - GasSponsorship
+      abis:
+        - name: VotingPaymaster
+          file: ./artifacts/contracts/VotingPaymaster.sol/VotingPaymaster.json
+      eventHandlers:
+        - event: GasSponsored(indexed uint256,indexed address,uint256,uint256)
+          handler: handleGasSponsored
+        - event: Funded(indexed address,uint256)
+          handler: handleFunded
+      file: ./subgraph/paymasterMapping.ts

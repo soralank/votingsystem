@@ -35,11 +35,13 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
   let electionsManagerV2: any;
   let tokenManager: any;
   let votingPaymaster: any;
+  let franchiseManager: any;
   let owner: any;
   let admin: any;
   let alice: any;
   let bob: any;
   let charlie: any;
+  let franchisee: any;
 
   let pollIdBeforeUpgrade: number;
 
@@ -342,6 +344,9 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
     });
 
     it("should get participation rate (new V2 feature)", async function () {
+      // Set authorized voter count for accurate participation rate
+      await electionsManagerV2.connect(admin).setAuthorizedVoterCount(pollIdV2, 2);
+
       const rate = await electionsManagerV2.getParticipationRate(pollIdV2);
       expect(bnToNumber(rate)).to.be.greaterThan(0);
 
@@ -459,6 +464,122 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
     });
   });
 
+  // ==================== PART 7: FRANCHISE SUPPORT ====================
+
+  describe("Part 7: Franchise Support on Upgradeable Contracts", function () {
+    it("should set franchise manager on V1 (via V2 proxy)", async function () {
+      // Deploy FranchiseManager pointing at the proxy
+      const FranchiseManager = await ethers.getContractFactory("FranchiseManager");
+      franchiseManager = await FranchiseManager.deploy(proxyAddress);
+      await franchiseManager.waitForDeployment();
+
+      // setFranchiseManager is inherited from V1
+      await electionsManagerV2.setFranchiseManager(franchiseManager.target);
+      expect(await electionsManagerV2.franchiseMgr()).to.equal(franchiseManager.target);
+
+      console.log("✓ FranchiseManager deployed at:", franchiseManager.target);
+      console.log("✓ Linked to proxy via setFranchiseManager");
+    });
+
+    it("should only allow owner to set franchise manager", async function () {
+      await expect(
+        electionsManagerV2.connect(alice).setFranchiseManager(alice.address)
+      ).to.be.revertedWithCustomError(electionsManagerV2, "OwnableUnauthorizedAccount");
+
+      console.log("✓ Non-owner cannot set franchise manager");
+    });
+
+    it("should reject zero address for franchise manager", async function () {
+      await expect(
+        electionsManagerV2.setFranchiseManager(ethers.ZeroAddress)
+      ).to.be.revertedWith("Invalid address");
+
+      console.log("✓ Zero address rejected for franchise manager");
+    });
+
+    it("should grant franchise and create poll through proxy", async function () {
+      // Get the franchisee signer
+      [, , , , , franchisee] = await ethers.getSigners();
+
+      const now = await getCurrentTimestamp();
+
+      // Grant franchise: 1 day, 5 polls, 0.01 ETH fee
+      await franchiseManager.grantFranchise(
+        franchisee.address,
+        86400,           // 1 day
+        5,               // max 5 polls
+        ethers.parseEther("0.01") // fee per poll
+      );
+
+      const fId = await franchiseManager.franchiseeToId(franchisee.address);
+      expect(fId).to.equal(1);
+
+      // Create poll through franchise (1st poll is free)
+      const startTime = now + 100;
+      await franchiseManager.connect(franchisee).createFranchisePoll(
+        "Franchise Poll via Proxy",
+        startTime,
+        600,    // 10 min duration
+        false,
+        false
+      );
+
+      // Verify poll was created on the upgradeable ElectionsManager
+      const pollCount = bnToNumber(await electionsManagerV2.pollsCount());
+      expect(pollCount).to.equal(3); // 2 existing + 1 franchise
+
+      const poll = await electionsManagerV2.polls(pollCount);
+      expect(poll.title).to.equal("Franchise Poll via Proxy");
+      expect(poll.admin).to.equal(franchisee.address);
+
+      console.log("✓ Franchise poll created (ID:", pollCount, ") through proxy");
+    });
+
+    it("should reject non-owner and non-franchise createPoll", async function () {
+      const now = await getCurrentTimestamp();
+      await expect(
+        electionsManagerV2.connect(alice).createPoll(
+          "Unauthorized Poll",
+          alice.address,
+          now + 100,
+          600,
+          false,
+          false
+        )
+      ).to.be.revertedWith("Not authorized");
+
+      console.log("✓ Non-owner/non-franchise createPoll correctly rejected");
+    });
+
+    it("should allow owner to still create polls directly", async function () {
+      const now = await getCurrentTimestamp();
+      await electionsManagerV2.createPoll(
+        "Owner Direct Poll After Franchise",
+        admin.address,
+        now + 100,
+        600,
+        false,
+        false
+      );
+
+      const pollCount = bnToNumber(await electionsManagerV2.pollsCount());
+      expect(pollCount).to.equal(4);
+
+      console.log("✓ Owner can still create polls directly (ID:", pollCount, ")");
+    });
+
+    it("should preserve franchise manager after upgrade re-verification", async function () {
+      // Verify franchiseMgr survived the V1→V2 upgrade (set after upgrade above)
+      expect(await electionsManagerV2.franchiseMgr()).to.equal(franchiseManager.target);
+
+      // Verify franchise polls still show correct data
+      const franchisePoll = await electionsManagerV2.polls(3);
+      expect(franchisePoll.title).to.equal("Franchise Poll via Proxy");
+
+      console.log("✓ Franchise manager preserved and functional through proxy");
+    });
+  });
+
   // ==================== SUMMARY ====================
 
   describe("Test Summary", function () {
@@ -476,11 +597,16 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
       console.log("  - Pause/unpause polls");
       console.log("  - Enhanced statistics");
       console.log("  - Polls by category query");
+      console.log("✓ Franchise Support: Verified");
+      console.log("  - setFranchiseManager access control");
+      console.log("  - Franchise poll creation through proxy");
+      console.log("  - Non-authorized createPoll rejected");
+      console.log("  - Owner direct poll creation preserved");
       console.log("✓ Backward Compatibility: Fully maintained");
       console.log("✓ Storage Layout: No corruption");
       console.log("✓ Authorization: Only owner can upgrade");
       console.log("=".repeat(60));
-      console.log("Total Polls Created: 2 (1 in V1, 1 in V2)");
+      console.log("Total Polls Created: 4 (1 V1, 1 V2, 1 franchise, 1 owner)");
       console.log("Total Votes Cast: 4 (across both versions)");
       console.log("Proxy Address:", proxyAddress);
       console.log("=".repeat(60) + "\n");

@@ -134,6 +134,24 @@ contract TokenManager {
     }
 
     /**
+     * @notice Burn a specific amount of tokens (for quadratic voting)
+     * @param pollId The poll ID
+     * @param voter Voter address
+     * @param amount Number of tokens to burn
+     */
+    function burnTokens(uint256 pollId, address voter, uint256 amount) external onlyVotingContract {
+        require(pollTokens[pollId] != address(0), "No token for this poll");
+        require(amount > 0, "Amount must be positive");
+
+        VotingToken token = VotingToken(pollTokens[pollId]);
+        require(token.balanceOf(voter) >= amount, "Insufficient tokens");
+
+        token.burn(voter, amount);
+
+        emit TokensBurned(pollId, voter, amount);
+    }
+
+    /**
      * @notice Check if voter has sufficient tokens
      * @param pollId The poll ID
      * @param voter Voter address

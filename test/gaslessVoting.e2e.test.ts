@@ -192,8 +192,7 @@ describe("Gasless Voting - End-to-End Integration", function () {
       await ethers.provider.send("evm_mine");
 
       await electionsManager.connect(admin).revealResults(pollId);
-      await electionsManager.connect(admin).endPoll(pollId);
-      console.log("✓ Poll ended and results revealed");
+      console.log("✓ Poll time expired and results revealed");
 
       // Step 11: Verify winner
       const [winnerId, winnerName] = await electionsManager.getWinner(pollId);

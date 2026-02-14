@@ -9,6 +9,18 @@ import "./TokenManager.sol";
  * @dev Simplified paymaster (not full ERC-4337), uses EIP-712 signatures
  */
 contract VotingPaymaster {
+    // Reentrancy guard
+    uint256 private _reentrancyStatus;
+    uint256 private constant _NOT_ENTERED = 1;
+    uint256 private constant _ENTERED = 2;
+
+    modifier nonReentrant() {
+        require(_reentrancyStatus != _ENTERED, "ReentrancyGuard: reentrant call");
+        _reentrancyStatus = _ENTERED;
+        _;
+        _reentrancyStatus = _NOT_ENTERED;
+    }
+
     // Reference to main voting contract
     address public votingContract;
 
@@ -32,8 +44,9 @@ contract VotingPaymaster {
     // Gas limit per transaction
     uint256 public constant GAS_LIMIT = 200000;
 
-    // Relayer whitelist (optional)
+    // Relayer whitelist
     mapping(address => bool) public trustedRelayers;
+    bool public relayerWhitelistEnabled;
 
     // Events
     event Funded(address indexed funder, uint256 amount);
@@ -41,6 +54,7 @@ contract VotingPaymaster {
     event GasSponsored(uint256 indexed pollId, address indexed voter, uint256 gasUsed, uint256 gasPrice);
     event RelayerAdded(address indexed relayer);
     event RelayerRemoved(address indexed relayer);
+    event RelayerWhitelistToggled(bool enabled);
     event AdminTransferred(address indexed previousAdmin, address indexed newAdmin);
 
     modifier onlyAdmin() {
@@ -67,6 +81,7 @@ contract VotingPaymaster {
         votingContract = _votingContract;
         tokenManager = TokenManager(_tokenManager);
         admin = _admin;
+        _reentrancyStatus = _NOT_ENTERED;
 
         // EIP-712 Domain Separator
         DOMAIN_SEPARATOR = keccak256(
@@ -94,7 +109,8 @@ contract VotingPaymaster {
      */
     function withdraw(uint256 amount) external onlyAdmin {
         require(address(this).balance >= amount, "Insufficient balance");
-        payable(admin).transfer(amount);
+        (bool success, ) = payable(admin).call{value: amount}("");
+        require(success, "ETH transfer failed");
         emit Withdrawn(admin, amount);
     }
 
@@ -115,6 +131,15 @@ contract VotingPaymaster {
     function removeRelayer(address relayer) external onlyAdmin {
         trustedRelayers[relayer] = false;
         emit RelayerRemoved(relayer);
+    }
+
+    /**
+     * @notice Enable or disable relayer whitelist enforcement
+     * @param enabled True to require trusted relayers, false to allow anyone
+     */
+    function setRelayerWhitelistEnabled(bool enabled) external onlyAdmin {
+        relayerWhitelistEnabled = enabled;
+        emit RelayerWhitelistToggled(enabled);
     }
 
     /**
@@ -173,8 +198,13 @@ contract VotingPaymaster {
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) external returns (bool) {
+    ) external nonReentrant returns (bool) {
         uint256 gasStart = gasleft();
+
+        // Enforce relayer whitelist if enabled
+        if (relayerWhitelistEnabled) {
+            require(trustedRelayers[msg.sender], "Only trusted relayers can execute");
+        }
 
         // Verify signature
         require(verifySignature(pollId, optionId, voter, deadline, v, r, s), "Invalid signature");

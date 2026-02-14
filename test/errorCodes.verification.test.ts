@@ -68,7 +68,7 @@ describe("Error Codes Verification", function () {
       ).to.be.revertedWith("Poll title already exists.");
     });
 
-    it('should throw: "Poll already started; cannot add options."', async function () {
+    it('should throw: "Poll started" (was: cannot add options)', async function () {
       const now = await getCurrentTimestamp();
       await electionsManager.createPoll("Test Poll", admin.address, now + 10, 600, false, false);
       const pollId = bnToNumber(await electionsManager.pollsCount());
@@ -78,7 +78,7 @@ describe("Error Codes Verification", function () {
 
       await expect(
         electionsManager.connect(admin).addOptionToPoll(pollId, "Late Option")
-      ).to.be.revertedWith("Poll already started; cannot add options.");
+      ).to.be.revertedWith("Poll started");
     });
 
     it('should throw: "Poll ended; cannot vote."', async function () {
@@ -184,7 +184,7 @@ describe("Error Codes Verification", function () {
       ).to.be.revertedWith("Invalid option.");
     });
 
-    it('should throw: "This poll requires token-based voting. Use voteInPollWithToken()"', async function () {
+    it('should throw: "Token voting required"', async function () {
       const now = await getCurrentTimestamp();
       await electionsManager.createPoll(
         "Token Required Poll",
@@ -204,7 +204,7 @@ describe("Error Codes Verification", function () {
 
       await expect(
         electionsManager.connect(voter).voteInPoll(tokenPollId, 1)
-      ).to.be.revertedWith("This poll requires token-based voting. Use voteInPollWithToken()");
+      ).to.be.revertedWith("Token voting required");
     });
   });
 
@@ -303,10 +303,10 @@ describe("Error Codes Verification", function () {
   });
 
   describe("Access Control Errors - As Documented", function () {
-    it('should throw: "Only owner can call"', async function () {
+    it('should throw: "Not authorized" (createPoll)', async function () {
       await expect(
         electionsManager.connect(attacker).createPoll("Test", admin.address, Date.now() + 1000, 600, false, false)
-      ).to.be.revertedWith("Only owner can call");
+      ).to.be.revertedWith("Not authorized");
     });
 
     it('should throw: "Only poll admin or owner allowed."', async function () {

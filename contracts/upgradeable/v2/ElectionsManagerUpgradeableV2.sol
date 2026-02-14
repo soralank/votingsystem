@@ -15,11 +15,13 @@ contract ElectionsManagerUpgradeableV2 is ElectionsManagerUpgradeable {
     mapping(uint => string) public pollCategories;
     mapping(uint => mapping(address => uint)) public voteWeight;
     mapping(uint => bool) public pollPaused;
+    mapping(uint => uint) public authorizedVoterCount;
 
     event PollCategorized(uint indexed pollId, string category);
     event VoteWeightSet(uint indexed pollId, address indexed voter, uint weight);
     event PollPaused(uint indexed pollId);
     event PollUnpaused(uint indexed pollId);
+    event VoterCountUpdated(uint indexed pollId, uint count);
 
     function initializeV2() public reinitializer(2) {
         // V2 initialization
@@ -43,7 +45,7 @@ contract ElectionsManagerUpgradeableV2 is ElectionsManagerUpgradeable {
 
     function pausePoll(uint pollId) external onlyAdminOrOwner(pollId) {
         require(polls[pollId].exists, "Poll does not exist.");
-        require(!polls[pollId].ended, "Poll already ended");
+        require(block.timestamp < polls[pollId].endTime + 30, "Poll already ended");
         require(!pollPaused[pollId], "Poll already paused");
 
         pollPaused[pollId] = true;
@@ -56,6 +58,17 @@ contract ElectionsManagerUpgradeableV2 is ElectionsManagerUpgradeable {
 
         pollPaused[pollId] = false;
         emit PollUnpaused(pollId);
+    }
+
+    /**
+     * @notice Track authorized voter count for participation rate
+     * @param pollId Poll ID
+     * @param count Number of authorized voters
+     */
+    function setAuthorizedVoterCount(uint pollId, uint count) external onlyAdminOrOwner(pollId) {
+        require(polls[pollId].exists, "Poll does not exist.");
+        authorizedVoterCount[pollId] = count;
+        emit VoterCountUpdated(pollId, count);
     }
 
     function voteInPoll(uint pollId, uint optionId) public override {
@@ -72,8 +85,9 @@ contract ElectionsManagerUpgradeableV2 is ElectionsManagerUpgradeable {
 
     function getParticipationRate(uint pollId) external view returns (uint rate) {
         require(polls[pollId].exists, "Poll does not exist.");
-        if (polls[pollId].totalVotes == 0) return 0;
-        return (polls[pollId].totalVotes * 100) / 100;
+        uint totalAuthorized = authorizedVoterCount[pollId];
+        if (totalAuthorized == 0) return 0;
+        return (polls[pollId].totalVotes * 100) / totalAuthorized;
     }
 
     function getVoteDiversity(uint pollId) external view returns (uint diversity) {
@@ -134,5 +148,5 @@ contract ElectionsManagerUpgradeableV2 is ElectionsManagerUpgradeable {
         return VERSION_V2;
     }
 
-    uint256[46] private __gapV2;
+    uint256[45] private __gapV2;
 }

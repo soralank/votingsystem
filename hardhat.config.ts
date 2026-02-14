@@ -18,8 +18,9 @@ export default defineConfig({
         settings: {
           optimizer: {
             enabled: true,
-            runs: 200,
+            runs: 100,
           },
+          viaIR: true,
         },
       },
       production: {
@@ -27,8 +28,9 @@ export default defineConfig({
         settings: {
           optimizer: {
             enabled: true,
-            runs: 200,
+            runs: 100,
           },
+          viaIR: true,
         },
       },
     },
@@ -47,6 +49,12 @@ export default defineConfig({
       chainType: "l1",
       url: configVariable("SEPOLIA_RPC_URL"),
       accounts: [configVariable("SEPOLIA_PRIVATE_KEY")],
+    },
+    mainnet: {
+      type: "http",
+      chainType: "l1",
+      url: configVariable("MAINNET_RPC_URL"),
+      accounts: [configVariable("MAINNET_PRIVATE_KEY")],
     },
   },
 });

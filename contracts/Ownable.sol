@@ -2,6 +2,13 @@
 
 pragma solidity ^0.8.20;
 
+/**
+ * @title Ownable (DEPRECATED)
+ * @notice This contract is NOT used in the inheritance chain.
+ * @dev Ownership logic is implemented directly in TokenIntegratedVoting.sol.
+ *      This file is kept for reference only. Do NOT import or inherit from it.
+ *      Use TokenIntegratedVoting's built-in ownership instead.
+ */
 contract Ownable {
 	// Owner state and transfer event
 	address public owner;

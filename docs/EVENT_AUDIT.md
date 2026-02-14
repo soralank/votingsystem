@@ -470,3 +470,57 @@ event VotedWithToken(uint256 indexed pollId, address indexed voter, uint indexed
 ```
 
 These changes align the regular contracts with the already-improved upgradeable versions.
+
+---
+
+## v4.0 Addendum: Trust Feature Events
+
+The following events were added in v4.0 for trust and secret ballot features:
+
+### ElectionsManager.sol — New Events
+
+```solidity
+event SecretBallotEnabled(uint indexed pollId);
+event SecretBallotManagerSet(address indexed manager);
+```
+
+| Event | Indexed | Data | When Emitted |
+|-------|---------|------|-------------|
+| `SecretBallotEnabled` | `pollId` | — | `enableSecretBallot()` called before poll starts |
+| `SecretBallotManagerSet` | `manager` | — | `setSecretBallotManager()` configures SBM address |
+
+**Assessment**: ✅ Both events use proper indexed parameters. `SecretBallotEnabled` allows frontends to filter secret ballot polls efficiently. `SecretBallotManagerSet` provides infrastructure configuration audit trail.
+
+### SecretBallotManager.sol — New Events
+
+```solidity
+event VoteCommitted(uint indexed pollId, address indexed voter);
+event VoteRevealed(uint indexed pollId, address indexed voter, uint indexed optionId);
+```
+
+| Event | Indexed | Data | When Emitted |
+|-------|---------|------|-------------|
+| `VoteCommitted` | `pollId`, `voter` | — | `commitVote()` or `commitVoteWithToken()` succeeds |
+| `VoteRevealed` | `pollId`, `voter`, `optionId` | — | `revealVote()` succeeds with matching hash |
+
+**Assessment**: ✅ Production-grade. Both events use all 3 indexed slots efficiently. `VoteCommitted` intentionally omits the commitment hash (privacy). `VoteRevealed` includes `optionId` indexed for analytics.
+
+### TokenIntegratedVoting.sol — New Events
+
+```solidity
+event InfrastructureLocked();
+```
+
+| Event | Indexed | Data | When Emitted |
+|-------|---------|------|-------------|
+| `InfrastructureLocked` | — | — | First poll created via `_lockInfrastructure()` |
+
+**Assessment**: ✅ Simple but effective. Emitted once per contract lifetime. Provides clear audit trail for infrastructure permanence. No parameters needed since it's a one-time global state change.
+
+### v4.0 Event Grade: **A**
+
+All new trust events follow best practices:
+- ✅ Proper use of `indexed` for filtering
+- ✅ Privacy-preserving (no commitment hashes exposed)
+- ✅ Complete audit trail for all trust state changes
+- ✅ Frontend-friendly for real-time monitoring

@@ -74,9 +74,9 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
     // totals and option counts
     expect(bnToNumber(await voting.getTotalVotes(pollId))).to.equal(2);
-    // Admin can see vote counts before reveal
+    // Vote counts hidden for everyone before reveal (no admin bypass)
     const opt2 = await voting.connect(admin).getOption(pollId, 2);
-    expect(bnToNumber(opt2[2])).to.equal(2);
+    expect(bnToNumber(opt2[2])).to.equal(0);
 
     // one person can only vote on a poll once -> double vote should revert
     await expect(voting.connect(alice).voteInPoll(pollId, 1)).to.be.revertedWith("You have already voted.");
@@ -105,9 +105,9 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
       "Not authorized to vote in this poll."
     );
 
-    // non-admin/non-owner cannot reveal (before end)
+    // cannot reveal before poll end (democratic reveal — anyone can trigger after time expires)
     await expect(voting.connect(attacker).revealResults(pollId)).to.be.revertedWith(
-      "Only poll admin or owner allowed."
+      "Poll not ended"
     );
   });
 
@@ -132,11 +132,10 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     // alice votes for 1
     await (await voting.connect(alice).voteInPoll(pollId, 1)).wait();
 
-    // admin can read voter choice even before reveal (admin allowed)
-    const adminChoiceBefore = bnToNumber(await voting.getVoterChoice(pollId, alice.address));
-    expect(adminChoiceBefore).to.equal(1);
-
-    // others cannot read voter choice before reveal
+    // No one can read voter choice before reveal (no admin bypass)
+    await expect(voting.connect(admin).getVoterChoice(pollId, alice.address)).to.be.revertedWith(
+      "Results not revealed."
+    );
     await expect(voting.connect(attacker).getVoterChoice(pollId, alice.address)).to.be.revertedWith(
       "Results not revealed."
     );
@@ -156,26 +155,20 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     const choiceAfterReveal = bnToNumber(await voting.getVoterChoice(pollId, alice.address));
     expect(choiceAfterReveal).to.equal(1);
 
-    // endPoll allowed after time
-    await (await voting.connect(admin).endPoll(pollId)).wait();
-
-    // after explicit end, adding option should revert
+    // after time passes, adding option should revert (time-based end)
     await expect(voting.connect(admin).addOptionToPoll(pollId, "LateOpt")).to.be.revertedWith(
-      "Poll ended; cannot add options."
+      "Poll ended"
     );
   });
 
-  it("end before endTime and reveal before endTime revert appropriately for a poll", async function () {
+  it("reveal before endTime reverts appropriately for a poll", async function () {
     const now = await getCurrentTimestamp();
     const mediumDuration = 400; // Must be >= MIN_POLL_DURATION (300)
     await (await voting.connect(owner).createPoll("Short2",  admin.address,  now + 10,  mediumDuration, false, false)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
-    // Cannot end before endTime + TIME_BUFFER
-    await expect(voting.connect(admin).endPoll(pollId)).to.be.revertedWith("Cannot end before end time plus buffer.");
-
     // Cannot reveal before endTime + TIME_BUFFER
-    await expect(voting.connect(admin).revealResults(pollId)).to.be.revertedWith("Cannot reveal before poll end plus buffer.");
+    await expect(voting.connect(admin).revealResults(pollId)).to.be.revertedWith("Poll not ended");
   });
 
   it("ownership transfer: new owner can create polls; old owner can't (2-step process)", async function () {
@@ -194,7 +187,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
     // Now old owner cannot create
     await expect(voting.connect(owner).createPoll("ShouldFail",  admin.address,  now + 2,  1000, false, false)).to.be.revertedWith(
-      "Only owner can call"
+      "Not authorized"
     );
 
     // Refresh timestamp again for final poll
@@ -216,8 +209,8 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     expect(bnToNumber(await voting.getOptionsCount(pollId))).to.equal(0);
     // no votes yet
     expect(bnToNumber(await voting.getTotalVotes(pollId))).to.equal(0);
-    // admin querying a non-voter should see 0 (no choice)
-    expect(bnToNumber(await voting.getVoterChoice(pollId, alice.address))).to.equal(0);
+    // voter choice hidden until reveal (no admin bypass)
+    await expect(voting.getVoterChoice(pollId, alice.address)).to.be.revertedWith("Results not revealed.");
   });
 
   it("creating multiple polls increments pollsCount", async function () {
@@ -327,7 +320,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     
     // cannot remove alice after poll started (even before she votes)
     await expect(voting.connect(admin).removeVoter(pollId, alice.address)).to.be.revertedWith(
-      "Poll already started; cannot remove voters."
+      "Poll started"
     );
   });
 
@@ -375,13 +368,8 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     await (await voting.connect(bob).voteInPoll(pollId, 2)).wait();    // votes for Bob
     await (await voting.connect(attacker).voteInPoll(pollId, 1)).wait(); // votes for Alice
 
-    // admin can see winner before reveal
-    const [winnerId, winnerName, winnerVotes] = await voting.connect(admin).getWinner(pollId);
-    expect(bnToNumber(winnerId)).to.equal(2);
-    expect(winnerName).to.equal("Bob");
-    expect(bnToNumber(winnerVotes)).to.equal(2);
-
-    // non-admin cannot see winner before reveal
+    // No one can see winner before reveal (no admin bypass)
+    await expect(voting.connect(admin).getWinner(pollId)).to.be.revertedWith("Results not revealed.");
     await expect(voting.connect(attacker).getWinner(pollId)).to.be.revertedWith("Results not revealed.");
 
     // advance time and reveal (need TIME_BUFFER after endTime)
@@ -403,15 +391,14 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     await (await voting.connect(owner).createPoll("EndedPoll",  admin.address,  now + 2,  shortDuration, false, false)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
-    // advance time and end poll (need TIME_BUFFER after endTime)
+    // advance time past end (need TIME_BUFFER after endTime)
     const endTime = bnToNumber(await voting.getPollEndTime(pollId));
     await ethers.provider.send("evm_setNextBlockTimestamp", [endTime + 35]);
     await ethers.provider.send("evm_mine", []);
-    await (await voting.connect(admin).endPoll(pollId)).wait();
 
-    // cannot add voters after poll ended
+    // cannot add voters after poll ended (time-based)
     await expect(voting.connect(admin).addVoter(pollId, alice.address)).to.be.revertedWith(
-      "Poll ended; cannot add voters."
+      "Poll ended"
     );
   });
 
@@ -533,11 +520,9 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     await (await voting.connect(alice).voteInPoll(pollId, 1)).wait();
     await (await voting.connect(bob).voteInPoll(pollId, 1)).wait();
 
-    // Admin can see vote counts
+    // Vote counts hidden for EVERYONE before reveal (no admin bypass)
     const adminView = await voting.connect(admin).getOption(pollId, 1);
-    expect(bnToNumber(adminView[2])).to.equal(2);
-
-    // Attacker (non-admin) sees 0 votes
+    expect(bnToNumber(adminView[2])).to.equal(0);
     const attackerView = await voting.connect(attacker).getOption(pollId, 1);
     expect(bnToNumber(attackerView[2])).to.equal(0);
 
@@ -618,11 +603,11 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     // No one can create polls now
     await expect(
       voting.connect(owner).createPoll("Fail",  admin.address,  now + 2,  1000, false, false)
-    ).to.be.revertedWith("Only owner can call");
+    ).to.be.revertedWith("Not authorized");
 
     await expect(
       voting.connect(newOwner).createPoll("Fail2",  admin.address,  now + 2,  1000, false, false)
-    ).to.be.revertedWith("Only owner can call");
+    ).to.be.revertedWith("Not authorized");
   });
 
   // Scheduled Voting Tests
@@ -673,7 +658,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
     // Cannot add option after start
     await expect(voting.connect(admin).addOptionToPoll(pollId, "LateOption")).to.be.revertedWith(
-      "Poll already started; cannot add options."
+      "Poll started"
     );
   });
 
@@ -692,7 +677,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
     // Cannot add voter after start
     await expect(voting.connect(admin).addVoter(pollId, alice.address)).to.be.revertedWith(
-      "Poll already started; cannot add voters."
+      "Poll started"
     );
   });
 
@@ -712,7 +697,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
     // Cannot remove voter after start
     await expect(voting.connect(admin).removeVoter(pollId, alice.address)).to.be.revertedWith(
-      "Poll already started; cannot remove voters."
+      "Poll started"
     );
   });
 

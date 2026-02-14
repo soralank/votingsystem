@@ -28,3 +28,8 @@ package-lock.json
 /.claude
 
 .DS_Store
+
+# Environment variables (NEVER commit secrets)
+.env
+.env.local
+.env.production

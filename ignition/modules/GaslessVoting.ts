@@ -1,16 +1,21 @@
 import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
 
 /**
- * Deployment module for token-based gasless voting system
+ * Deployment module for token-based gasless voting system with secret ballot + franchise support
  *
  * This module deploys:
- * 1. ElectionsManager (main voting contract with token support)
+ * 1. ElectionsManager (main voting contract with token support & trust features)
  * 2. TokenManager (manages per-poll voting tokens)
  * 3. VotingPaymaster (sponsors gas fees for token-based votes)
+ * 4. SecretBallotManager (commit-reveal voting for secret ballot polls)
+ * 5. FranchiseManager (sub-admin franchise system)
  *
  * And configures:
- * - TokenManager and Paymaster references in ElectionsManager
+ * - TokenManager, Paymaster, SecretBallotManager, and FranchiseManager references in ElectionsManager
  * - Initial funding for the paymaster
+ *
+ * Note: Infrastructure is permanently locked after the first poll is created,
+ * so all configuration must happen during deployment.
  */
 const GaslessVotingModule = buildModule("GaslessVotingModule", (m) => {
   // Parameters
@@ -31,19 +36,37 @@ const GaslessVotingModule = buildModule("GaslessVotingModule", (m) => {
     paymasterAdmin,
   ]);
 
-  // 4. Configure ElectionsManager with TokenManager reference
+  // 4. Deploy SecretBallotManager (needs voting contract address)
+  const secretBallotManager = m.contract("SecretBallotManager", [
+    electionsManager,
+  ]);
+
+  // 5. Deploy FranchiseManager (needs voting contract address)
+  const franchiseManager = m.contract("FranchiseManager", [
+    electionsManager,
+  ]);
+
+  // 5. Configure ElectionsManager with TokenManager reference
   m.call(electionsManager, "setTokenManager", [tokenManager]);
 
-  // 5. Configure ElectionsManager with VotingPaymaster reference
+  // 6. Configure ElectionsManager with VotingPaymaster reference
   m.call(electionsManager, "setVotingPaymaster", [votingPaymaster]);
 
-  // 6. Fund the paymaster with initial ETH to cover gas costs
+  // 7. Configure ElectionsManager with SecretBallotManager reference
+  m.call(electionsManager, "setSecretBallotManager", [secretBallotManager]);
+
+  // 8. Configure ElectionsManager with FranchiseManager reference
+  m.call(electionsManager, "setFranchiseManager", [franchiseManager]);
+
+  // 9. Fund the paymaster with initial ETH to cover gas costs
   m.call(votingPaymaster, "fund", [], { value: initialFunding });
 
   return {
     electionsManager,
     tokenManager,
     votingPaymaster,
+    secretBallotManager,
+    franchiseManager,
   };
 });
 

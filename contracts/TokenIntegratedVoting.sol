@@ -11,9 +11,24 @@ import "./VotingPaymaster.sol";
  * @dev Extends TimeValidator, integrates with TokenManager and VotingPaymaster
  */
 contract TokenIntegratedVoting is TimeValidator {
+    // Reentrancy guard
+    uint256 private _reentrancyStatus;
+    uint256 private constant _NOT_ENTERED = 1;
+    uint256 private constant _ENTERED = 2;
+
+    modifier nonReentrant() {
+        require(_reentrancyStatus != _ENTERED, "ReentrancyGuard: reentrant call");
+        _reentrancyStatus = _ENTERED;
+        _;
+        _reentrancyStatus = _NOT_ENTERED;
+    }
+
     // Token infrastructure
     TokenManager public tokenManager;
     VotingPaymaster public votingPaymaster;
+
+    // Infrastructure lock: permanently prevents swapping critical contracts
+    bool public infrastructureLocked;
 
     // Owner address (for access control)
     address public owner;
@@ -36,6 +51,7 @@ contract TokenIntegratedVoting is TimeValidator {
     // Events
     event TokenManagerSet(address indexed tokenManager);
     event PaymasterSet(address indexed paymaster);
+    event InfrastructureLocked();
     event TokenVotingConfigured(
         uint256 indexed pollId,
         bool enabled,
@@ -57,27 +73,45 @@ contract TokenIntegratedVoting is TimeValidator {
      */
     constructor() {
         owner = msg.sender;
+        _reentrancyStatus = _NOT_ENTERED;
         emit OwnershipTransferred(address(0), msg.sender);
     }
 
     /**
-     * @notice Set the token manager contract
+     * @notice Set the token manager contract (only before infrastructure is locked)
      * @param _tokenManager Address of TokenManager
      */
     function setTokenManager(address _tokenManager) external onlyOwner {
         require(_tokenManager != address(0), "Invalid token manager");
+        require(!infrastructureLocked, "Infra locked");
         tokenManager = TokenManager(_tokenManager);
         emit TokenManagerSet(_tokenManager);
     }
 
     /**
-     * @notice Set the voting paymaster contract
+     * @notice Set the voting paymaster contract (only before infrastructure is locked)
      * @param _paymaster Address of VotingPaymaster
      */
     function setVotingPaymaster(address payable _paymaster) external onlyOwner {
         require(_paymaster != address(0), "Invalid paymaster");
+        require(!infrastructureLocked, "Infra locked");
         votingPaymaster = VotingPaymaster(_paymaster);
         emit PaymasterSet(_paymaster);
+    }
+
+    /**
+     * @notice Lock infrastructure permanently — prevents swapping TokenManager/Paymaster
+     * @dev Called automatically when first poll is created, or manually by owner
+     */
+    function lockInfrastructure() external onlyOwner {
+        _lockInfrastructure();
+    }
+
+    function _lockInfrastructure() internal {
+        if (!infrastructureLocked) {
+            infrastructureLocked = true;
+            emit InfrastructureLocked();
+        }
     }
 
     /**
@@ -94,10 +128,7 @@ contract TokenIntegratedVoting is TimeValidator {
         bool tokenRequired,
         uint256 tokensPerVoter,
         bool allowGaslessVoting
-    ) external virtual {
-        // Access control should be implemented in subclass
-        // This function is meant to be overridden by ElectionsManager
-
+    ) external virtual onlyOwner {
         TokenConfig storage config = pollTokenConfigs[pollId];
         config.enabled = enabled;
         config.tokenRequired = tokenRequired;
@@ -117,8 +148,7 @@ contract TokenIntegratedVoting is TimeValidator {
         uint256 pollId,
         string calldata tokenName,
         string calldata tokenSymbol
-    ) external virtual {
-        // Access control should be implemented in subclass
+    ) external virtual onlyOwner {
         require(address(tokenManager) != address(0), "TokenManager not set");
 
         tokenManager.createPollToken(pollId, tokenName, tokenSymbol);
@@ -134,8 +164,7 @@ contract TokenIntegratedVoting is TimeValidator {
         uint256 pollId,
         address[] calldata voters,
         uint256[] calldata amounts
-    ) external virtual {
-        // Access control should be implemented in subclass
+    ) external virtual onlyOwner {
         require(address(tokenManager) != address(0), "TokenManager not set");
         require(voters.length > 0, "Empty voters array");
 
@@ -172,7 +201,7 @@ contract TokenIntegratedVoting is TimeValidator {
         uint256 pollId,
         uint256 optionId,
         address voter
-    ) public virtual {
+    ) public virtual nonReentrant {
         // Validation logic should be implemented in subclass
         // - Poll exists and is active
         // - Voter is authorized
