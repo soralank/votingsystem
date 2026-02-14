@@ -61,16 +61,16 @@ describe("Error Codes Verification", function () {
 
     it('should throw: "Poll title already exists."', async function () {
       const now = await getCurrentTimestamp();
-      await electionsManager.createPoll("Duplicate Title", admin.address, now + 10, 600, false, false);
+      await electionsManager.createPoll("Duplicate Title", admin.address, now + 10, 600, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
 
       await expect(
-        electionsManager.createPoll("Duplicate Title", admin.address, now + 10, 600, false, false)
+        electionsManager.createPoll("Duplicate Title", admin.address, now + 10, 600, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
       ).to.be.revertedWith("Poll title already exists.");
     });
 
     it('should throw: "Poll started" (was: cannot add options)', async function () {
       const now = await getCurrentTimestamp();
-      await electionsManager.createPoll("Test Poll", admin.address, now + 10, 600, false, false);
+      await electionsManager.createPoll("Test Poll", admin.address, now + 10, 600, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
       const pollId = bnToNumber(await electionsManager.pollsCount());
 
       await ethers.provider.send("evm_setNextBlockTimestamp", [now + 20]);
@@ -83,7 +83,7 @@ describe("Error Codes Verification", function () {
 
     it('should throw: "Poll ended; cannot vote."', async function () {
       const now = await getCurrentTimestamp();
-      await electionsManager.createPoll("Test Poll", admin.address, now + 10, 400, false, false);
+      await electionsManager.createPoll("Test Poll", admin.address, now + 10, 400, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
       const pollId = bnToNumber(await electionsManager.pollsCount());
 
       await electionsManager.connect(admin).addOptionToPoll(pollId, "Option 1");
@@ -100,7 +100,7 @@ describe("Error Codes Verification", function () {
     it('should throw: "Maximum options limit reached."', async function () {
       const now = await getCurrentTimestamp();
       // Set start time far in future so we have time to add 100 options
-      await electionsManager.createPoll("Test Poll", admin.address, now + 3600, 600, false, false);
+      await electionsManager.createPoll("Test Poll", admin.address, now + 3600, 600, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
       const pollId = bnToNumber(await electionsManager.pollsCount());
 
       // Add 100 options (MAX_OPTIONS limit)
@@ -119,7 +119,7 @@ describe("Error Codes Verification", function () {
 
     beforeEach(async function () {
       const now = await getCurrentTimestamp();
-      await electionsManager.createPoll("Test Poll", admin.address, now + 10, 600, false, false);
+      await electionsManager.createPoll("Test Poll", admin.address, now + 10, 600, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
       pollId = bnToNumber(await electionsManager.pollsCount());
       await electionsManager.connect(admin).addOptionToPoll(pollId, "Option 1");
     });
@@ -161,7 +161,7 @@ describe("Error Codes Verification", function () {
 
     beforeEach(async function () {
       const now = await getCurrentTimestamp();
-      await electionsManager.createPoll("Test Poll", admin.address, now + 10, 600, false, false);
+      await electionsManager.createPoll("Test Poll", admin.address, now + 10, 600, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
       pollId = bnToNumber(await electionsManager.pollsCount());
       await electionsManager.connect(admin).addOptionToPoll(pollId, "Option 1");
       await electionsManager.connect(admin).addVoter(pollId, voter.address);
@@ -192,7 +192,9 @@ describe("Error Codes Verification", function () {
         now + 10,
         600,
         true,
-        true // token required
+        true, // token required
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
       const tokenPollId = bnToNumber(await electionsManager.pollsCount());
 
@@ -213,7 +215,7 @@ describe("Error Codes Verification", function () {
 
     beforeEach(async function () {
       const now = await getCurrentTimestamp();
-      await electionsManager.createPoll("Token Poll", admin.address, now + 10, 600, true, false);
+      await electionsManager.createPoll("Token Poll", admin.address, now + 10, 600, true, false, ethers.ZeroAddress, ethers.ZeroAddress);
       pollId = bnToNumber(await electionsManager.pollsCount());
       await electionsManager.connect(admin).addOptionToPoll(pollId, "Option 1");
     });
@@ -305,13 +307,13 @@ describe("Error Codes Verification", function () {
   describe("Access Control Errors - As Documented", function () {
     it('should throw: "Not authorized" (createPoll)', async function () {
       await expect(
-        electionsManager.connect(attacker).createPoll("Test", admin.address, Date.now() + 1000, 600, false, false)
+        electionsManager.connect(attacker).createPoll("Test", admin.address, Date.now() + 1000, 600, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
       ).to.be.revertedWith("Not authorized");
     });
 
     it('should throw: "Only poll admin or owner allowed."', async function () {
       const now = await getCurrentTimestamp();
-      await electionsManager.createPoll("Test Poll", admin.address, now + 10, 600, false, false);
+      await electionsManager.createPoll("Test Poll", admin.address, now + 10, 600, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
       const pollId = bnToNumber(await electionsManager.pollsCount());
 
       await expect(
@@ -333,7 +335,7 @@ describe("Error Codes Verification", function () {
       const pastTime = (await getCurrentTimestamp()) - 100;
 
       await expect(
-        electionsManager.createPoll("Past Poll", admin.address, pastTime, 600, false, false)
+        electionsManager.createPoll("Past Poll", admin.address, pastTime, 600, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
       ).to.be.revertedWith("Start time cannot be in the past.");
     });
 
@@ -341,7 +343,7 @@ describe("Error Codes Verification", function () {
       const now = await getCurrentTimestamp();
 
       await expect(
-        electionsManager.createPoll("Short Poll", admin.address, now + 10, 100, false, false) // < 300 seconds
+        electionsManager.createPoll("Short Poll", admin.address, now + 10, 100, false, false, ethers.ZeroAddress, ethers.ZeroAddress) // < 300 seconds
       ).to.be.revertedWith("Poll duration too short.");
     });
 
@@ -350,7 +352,7 @@ describe("Error Codes Verification", function () {
       const farFuture = now + (31 * 24 * 60 * 60); // 31 days (> MAX_FUTURE_START)
 
       await expect(
-        electionsManager.createPoll("Far Future Poll", admin.address, farFuture, 600, false, false)
+        electionsManager.createPoll("Far Future Poll", admin.address, farFuture, 600, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
       ).to.be.revertedWith("Start time too far in future.");
     });
   });
@@ -360,13 +362,13 @@ describe("Error Codes Verification", function () {
       const now = await getCurrentTimestamp();
 
       await expect(
-        electionsManager.createPoll("Test Poll", ethers.ZeroAddress, now + 10, 600, false, false)
+        electionsManager.createPoll("Test Poll", ethers.ZeroAddress, now + 10, 600, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
       ).to.be.revertedWith("admin zero");
     });
 
     it('should throw: "Empty arrays"', async function () {
       const now = await getCurrentTimestamp();
-      await electionsManager.createPoll("Test Poll", admin.address, now + 10, 600, true, false);
+      await electionsManager.createPoll("Test Poll", admin.address, now + 10, 600, true, false, ethers.ZeroAddress, ethers.ZeroAddress);
       const pollId = bnToNumber(await electionsManager.pollsCount());
 
       // This error is internal-only (TokenManager.batchAllocateTokens called by voting contract)
@@ -379,7 +381,7 @@ describe("Error Codes Verification", function () {
 
     it('should throw: "Array length mismatch"', async function () {
       const now = await getCurrentTimestamp();
-      await electionsManager.createPoll("Test Poll", admin.address, now + 10, 600, true, false);
+      await electionsManager.createPoll("Test Poll", admin.address, now + 10, 600, true, false, ethers.ZeroAddress, ethers.ZeroAddress);
       const pollId = bnToNumber(await electionsManager.pollsCount());
 
       // This error is internal-only (TokenManager.batchAllocateTokens with different length arrays)

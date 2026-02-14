@@ -105,7 +105,9 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
         uint startTime,
         uint durationSeconds,
         bool enableTokenVoting,
-        bool requireTokenVoting
+        bool requireTokenVoting,
+        address /* customTokenManager */,
+        address /* customVotingPaymaster */
     ) external returns (uint) {
         require(msg.sender == owner() || msg.sender == franchiseMgr, "Not authorized");
         require(bytes(title).length > 0, "Title cannot be empty");

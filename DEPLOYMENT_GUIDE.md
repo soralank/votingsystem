@@ -1,4 +1,4 @@
-# 🚀 Deployment Guide - Blockchain Voting System v4.0
+# 🚀 Deployment Guide - Blockchain Voting System v4.1
 
 Complete guide for deploying the voting system smart contracts to local, Sepolia testnet, and Ethereum mainnet.
 
@@ -165,7 +165,7 @@ console.log("Infrastructure locked:", locked);  // false (until first poll)
 npx hardhat test
 ```
 
-All 312 tests should pass.
+All 396 tests should pass.
 
 ## 🌐 Testnet Deployment (Sepolia)
 
@@ -231,7 +231,7 @@ console.log("Locked:", await em.infrastructureLocked());
 
 ### Pre-Deployment Checklist
 
-- [ ] All 312 tests passing
+- [ ] All 396 tests passing
 - [ ] Tested on Sepolia testnet successfully
 - [ ] Gas costs estimated and acceptable
 - [ ] Private keys secured (hardware wallet recommended)
@@ -261,7 +261,7 @@ npx hardhat test
 REPORT_GAS=true npx hardhat test
 ```
 
-All 312 tests must pass with 100% success rate.
+All 396 tests must pass with 100% success rate.
 
 ### Step 3: Estimate Costs
 
@@ -273,6 +273,7 @@ At 50 gwei gas price and $2,000/ETH:
 | TokenManager | ~1,500,000 | ~$150 |
 | VotingPaymaster | ~1,200,000 | ~$120 |
 | SecretBallotManager | ~800,000 | ~$80 |
+| FranchiseManager | ~600,000 | ~$60 |
 | Configuration txs | ~300,000 | ~$30 |
 | Paymaster funding | 1 ETH | $2,000 |
 | **Total** | | **~$2,660** |
@@ -304,7 +305,7 @@ npx hardhat verify --network mainnet VOTING_PAYMASTER_ADDRESS ELECTIONS_MANAGER_
    // Then from multisig:
    await em.acceptOwnership();
    ```
-4. **Note**: After creating the first poll, infrastructure is **permanently locked** — TokenManager, VotingPaymaster, and SecretBallotManager addresses cannot be changed.
+4. **Note**: After creating the first poll, infrastructure is **permanently locked** — TokenManager, VotingPaymaster, SecretBallotManager, and FranchiseManager addresses cannot be changed.
 
 ## 📋 Post-Deployment Verification
 
@@ -320,6 +321,13 @@ console.log("Owner:", await em.owner());
 console.log("TokenManager:", await em.tokenManager());
 console.log("VotingPaymaster:", await em.votingPaymaster());
 console.log("SecretBallotMgr:", await em.secretBallotMgr());
+console.log("FranchiseManager:", await em.franchiseMgr());
+
+// 2b. Check module contracts (auto-deployed)
+console.log("MultiChoiceVoting:", await em.multiChoiceVoting());
+console.log("QuadraticVoting:", await em.quadraticVoting());
+console.log("DelegationVoting:", await em.delegationVoting());
+console.log("MetadataVoting:", await em.metadataVoting());
 
 // 3. Check infrastructure lock status
 console.log("Locked:", await em.infrastructureLocked());
@@ -365,7 +373,7 @@ The project includes a GitHub Actions CI/CD pipeline (`.github/workflows/ci.yml`
 | Job | Description |
 |-----|-------------|
 | **Compile** | Compiles all Solidity contracts, checks sizes |
-| **Test** | Runs all 312 tests + gas reporting |
+| **Test** | Runs all 396 tests + gas reporting |
 | **Slither** | Static security analysis (Slither) |
 | **Deploy Check** | Verifies all ignition deployment modules exist |
 
@@ -410,6 +418,6 @@ REPORT_GAS=true npx hardhat test
 
 ---
 
-**Version**: 4.0.0
+**Version**: 4.1.0
 **Networks**: Local (Hardhat) | Sepolia | Mainnet
-**Contracts Deployed**: 4 (ElectionsManager, TokenManager, VotingPaymaster, SecretBallotManager)
+**Contracts Deployed**: 5 explicit (ElectionsManager, TokenManager, VotingPaymaster, SecretBallotManager, FranchiseManager) + 4 auto-deployed modules (MultiChoiceVoting, QuadraticVoting, DelegationVoting, MetadataVoting)

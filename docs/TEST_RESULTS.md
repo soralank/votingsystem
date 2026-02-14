@@ -1,6 +1,6 @@
 # Test Results - Voting System v4.0
 
-**Status**: ✅ 381/381 passing (100%)
+**Status**: ✅ 396/396 passing (100%)
 **Date**: 2026-02-13
 **Framework**: Mocha + Chai via Hardhat 3.1.3
 
@@ -10,8 +10,8 @@
 
 | Metric | Value |
 |--------|-------|
-| **Total Tests** | 381 |
-| **Passing** | 381 |
+| **Total Tests** | 396 |
+| **Passing** | 396 |
 | **Failing** | 0 |
 | **Test Suites** | 12 |
 | **Execution Time** | ~11s |
@@ -115,8 +115,8 @@
 - **TransferFrom** (5): Burn-only, events, non-zero revert, allowance, balance
 - **ERC20 Compatibility** (1): Standard view functions
 
-### 12. Franchise Manager (62 tests) — `franchiseManager.test.ts`
-- **Grant Franchise** (11): Grant, events, validations, re-grant after expiry, multiple
+### 12. Franchise Manager (77 tests) — `franchiseManager.test.ts`
+- **Grant Franchise** (11): Grant, events, validations, supersede active, re-grant after expiry, multiple
 - **Create Franchise Poll** (11): First free, fee required, refund excess, expired, max polls, token voting
 - **Franchise Transfer** (16): Request, approve, reject, refund, access control, expired, pending
 - **Irrevocability** (3): No revoke, expired, exhausted
@@ -124,6 +124,8 @@
 - **View Helpers** (6): remainingPolls, isFranchiseActive, getFranchise expired/exhausted
 - **Security** (5): No direct createPoll, no setFranchiseManager, no setTokenManager
 - **Edge Cases** (5): Free polls, transfer preserves state, re-grant, max 100, zero address
+- **Add Polls** (11): addPolls, events, remainingPolls, access control, expired/exhausted, cap 100, partial use
+- **Franchise Supersede** (4): Preserve old polls, fresh franchise, orphaned old, events
 
 ---
 

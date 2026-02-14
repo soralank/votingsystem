@@ -104,7 +104,9 @@ describe("Gasless Voting - End-to-End Integration", function () {
         now + 10,
         3600, // 1 hour
         true, // enable tokens
-        false // not required
+        false, // not required
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       const pollId = bnToNumber(await electionsManager.pollsCount());
@@ -215,7 +217,9 @@ describe("Gasless Voting - End-to-End Integration", function () {
         now + 10,
         1000,
         true,
-        false
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
       pollId = bnToNumber(await electionsManager.pollsCount());
 
@@ -294,7 +298,9 @@ describe("Gasless Voting - End-to-End Integration", function () {
         now + 10,
         1000,
         true,
-        false
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
       const pollId = bnToNumber(await electionsManager.pollsCount());
 
@@ -336,7 +342,9 @@ describe("Gasless Voting - End-to-End Integration", function () {
         now + 10,
         1000,
         true,
-        false
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
       const pollId = bnToNumber(await electionsManager.pollsCount());
 

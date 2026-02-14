@@ -19,15 +19,18 @@
 # Hardhat coverage reports
 /coverage
 
+# Hardhat Ignition deployments
 /ignition/deployments
 
+# Lock files
 package-lock.json
 
-/ignition/deployments
-
+# IDE / OS
 /.claude
-
 .DS_Store
+
+# Logs
+*.log
 
 # Environment variables (NEVER commit secrets)
 .env

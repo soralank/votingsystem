@@ -48,12 +48,14 @@ interface IElectionsManager {
  */
 contract SecretBallotManager {
     // ── Constants ────────────────────────────────────────────────
-    uint public constant REVEAL_DURATION = 1 hours;
     uint public constant TIME_BUFFER = 30; // Must match TimeValidator.TIME_BUFFER
+    uint public constant MIN_REVEAL_DURATION = 1 minutes;
 
     // ── State ────────────────────────────────────────────────────
     IElectionsManager public electionsManager;
     address public owner;
+    uint public defaultRevealDuration = 1 hours;
+    mapping(uint => uint) public pollRevealDuration; // pollId => custom duration (0 = use default)
 
     // pollId => voter => keccak256 commitment hash
     mapping(uint => mapping(address => bytes32)) private voteCommitments;
@@ -81,6 +83,39 @@ contract SecretBallotManager {
         require(_electionsManager != address(0), "Invalid address");
         electionsManager = IElectionsManager(_electionsManager);
         owner = msg.sender;
+    }
+
+    // ── Reveal Duration Configuration ────────────────────────────
+
+    /**
+     * @notice Set the default reveal duration for new polls
+     * @param duration Duration in seconds (minimum 1 minute)
+     */
+    function setDefaultRevealDuration(uint duration) external onlyOwner {
+        require(duration >= MIN_REVEAL_DURATION, "Reveal duration too short");
+        defaultRevealDuration = duration;
+    }
+
+    /**
+     * @notice Set reveal duration for a specific poll (before poll starts)
+     * @param pollId Poll ID
+     * @param duration Duration in seconds (minimum 1 minute, 0 = use default)
+     */
+    function setRevealDuration(uint pollId, uint duration) external onlyOwner {
+        require(duration == 0 || duration >= MIN_REVEAL_DURATION, "Reveal duration too short");
+        uint startTime = electionsManager.getPollStartTime(pollId);
+        require(block.timestamp < startTime, "Poll already started");
+        pollRevealDuration[pollId] = duration;
+    }
+
+    /**
+     * @notice Get the effective reveal duration for a poll
+     * @param pollId Poll ID
+     * @return The reveal duration in seconds
+     */
+    function getRevealDuration(uint pollId) public view returns (uint) {
+        uint duration = pollRevealDuration[pollId];
+        return duration > 0 ? duration : defaultRevealDuration;
     }
 
     // ── Commit Phase ─────────────────────────────────────────────
@@ -144,7 +179,7 @@ contract SecretBallotManager {
         require(!hasRevealed[pollId][msg.sender], "Already revealed.");
 
         uint endTime = electionsManager.getPollEndTime(pollId);
-        require(_isInRevealPeriod(endTime), "Not in reveal period.");
+        require(_isInRevealPeriod(endTime, pollId), "Not in reveal period.");
 
         uint optionsCount = electionsManager.getOptionsCount(pollId);
         require(optionId > 0 && optionId <= optionsCount, "Invalid option.");
@@ -180,7 +215,7 @@ contract SecretBallotManager {
      */
     function isInRevealPhase(uint pollId) external view returns (bool) {
         uint endTime = electionsManager.getPollEndTime(pollId);
-        return _isInRevealPeriod(endTime);
+        return _isInRevealPeriod(endTime, pollId);
     }
 
     /**
@@ -188,7 +223,7 @@ contract SecretBallotManager {
      * @param pollId Poll ID
      */
     function getRevealDeadline(uint pollId) external view returns (uint) {
-        return electionsManager.getPollEndTime(pollId) + TIME_BUFFER + REVEAL_DURATION;
+        return electionsManager.getPollEndTime(pollId) + TIME_BUFFER + getRevealDuration(pollId);
     }
 
     /**
@@ -213,7 +248,7 @@ contract SecretBallotManager {
             revealCount[pollId],
             electionsManager.secretBallot(pollId),
             electionsManager.isPollActive(pollId),
-            _isInRevealPeriod(endTime)
+            _isInRevealPeriod(endTime, pollId)
         );
     }
 
@@ -234,11 +269,12 @@ contract SecretBallotManager {
     /**
      * @dev Check if current time is within the reveal period
      * @param endTime Poll end time
-     * @return True if in [endTime + TIME_BUFFER, endTime + TIME_BUFFER + REVEAL_DURATION]
+     * @param pollId Poll ID (for configurable reveal duration)
+     * @return True if in [endTime + TIME_BUFFER, endTime + TIME_BUFFER + revealDuration]
      */
-    function _isInRevealPeriod(uint endTime) internal view returns (bool) {
+    function _isInRevealPeriod(uint endTime, uint pollId) internal view returns (bool) {
         uint revealStart = endTime + TIME_BUFFER;
-        uint revealEnd = revealStart + REVEAL_DURATION;
+        uint revealEnd = revealStart + getRevealDuration(pollId);
         return block.timestamp >= revealStart && block.timestamp <= revealEnd;
     }
 }

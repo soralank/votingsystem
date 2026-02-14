@@ -71,7 +71,9 @@ describe("FranchiseManager", function () {
         franchisee1.address,
         THIRTY_DAYS,
         10,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        tokenManager.target,
+        ethers.ZeroAddress
       );
       const receipt = await tx.wait();
 
@@ -97,7 +99,9 @@ describe("FranchiseManager", function () {
           franchisee1.address,
           THIRTY_DAYS,
           5,
-          FEE_PER_POLL
+          FEE_PER_POLL,
+          tokenManager.target,
+          ethers.ZeroAddress
         )
       ).to.emit(franchiseManager, "FranchiseGranted");
     });
@@ -106,7 +110,14 @@ describe("FranchiseManager", function () {
       await expect(
         franchiseManager
           .connect(attacker)
-          .grantFranchise(franchisee1.address, THIRTY_DAYS, 10, FEE_PER_POLL)
+          .grantFranchise(
+            franchisee1.address,
+            THIRTY_DAYS,
+            10,
+            FEE_PER_POLL,
+            tokenManager.target,
+            ethers.ZeroAddress
+          )
       ).to.be.revertedWith("Only owner");
     });
 
@@ -116,7 +127,9 @@ describe("FranchiseManager", function () {
           ethers.ZeroAddress,
           THIRTY_DAYS,
           10,
-          FEE_PER_POLL
+          FEE_PER_POLL,
+          tokenManager.target,
+          ethers.ZeroAddress
         )
       ).to.be.revertedWith("Invalid address");
     });
@@ -127,7 +140,9 @@ describe("FranchiseManager", function () {
           owner.address,
           THIRTY_DAYS,
           10,
-          FEE_PER_POLL
+          FEE_PER_POLL,
+          tokenManager.target,
+          ethers.ZeroAddress
         )
       ).to.be.revertedWith("Owner cannot be franchisee");
     });
@@ -138,7 +153,9 @@ describe("FranchiseManager", function () {
           franchisee1.address,
           THIRTY_DAYS,
           0,
-          FEE_PER_POLL
+          FEE_PER_POLL,
+          tokenManager.target,
+          ethers.ZeroAddress
         )
       ).to.be.revertedWith("Polls: 1-100");
     });
@@ -149,7 +166,9 @@ describe("FranchiseManager", function () {
           franchisee1.address,
           THIRTY_DAYS,
           101,
-          FEE_PER_POLL
+          FEE_PER_POLL,
+          tokenManager.target,
+          ethers.ZeroAddress
         )
       ).to.be.revertedWith("Polls: 1-100");
     });
@@ -160,26 +179,44 @@ describe("FranchiseManager", function () {
           franchisee1.address,
           0,
           10,
-          FEE_PER_POLL
+          FEE_PER_POLL,
+          tokenManager.target,
+          ethers.ZeroAddress
         )
       ).to.be.revertedWith("Duration must be > 0");
     });
 
-    it("should revert if address already has active franchise", async function () {
+    it("should supersede active franchise when re-granting to same address", async function () {
       await franchiseManager.grantFranchise(
         franchisee1.address,
         THIRTY_DAYS,
         10,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        tokenManager.target,
+        ethers.ZeroAddress
       );
-      await expect(
-        franchiseManager.grantFranchise(
-          franchisee1.address,
-          THIRTY_DAYS,
-          5,
-          FEE_PER_POLL
-        )
-      ).to.be.revertedWith("Active franchise exists");
+
+      // Re-grant to same address while still active — supersedes
+      const tx = await franchiseManager.grantFranchise(
+        franchisee1.address,
+        THIRTY_DAYS,
+        5,
+        FEE_PER_POLL,
+        tokenManager.target,
+        ethers.ZeroAddress
+      );
+
+      // Old franchise (id=1) superseded, new franchise (id=2) active
+      expect(bnToNumber(await franchiseManager.franchiseCount())).to.equal(2);
+      const fid = bnToNumber(
+        await franchiseManager.franchiseeToId(franchisee1.address)
+      );
+      expect(fid).to.equal(2);
+
+      // Verify FranchiseSuperseded event
+      await expect(tx)
+        .to.emit(franchiseManager, "FranchiseSuperseded")
+        .withArgs(1, 2, franchisee1.address);
     });
 
     it("should allow re-granting after franchise expires", async function () {
@@ -188,7 +225,9 @@ describe("FranchiseManager", function () {
         franchisee1.address,
         1,
         10,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        tokenManager.target,
+        ethers.ZeroAddress
       );
 
       // Fast forward 2 seconds
@@ -200,7 +239,9 @@ describe("FranchiseManager", function () {
         franchisee1.address,
         THIRTY_DAYS,
         5,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        tokenManager.target,
+        ethers.ZeroAddress
       );
 
       expect(bnToNumber(await franchiseManager.franchiseCount())).to.equal(2);
@@ -215,13 +256,17 @@ describe("FranchiseManager", function () {
         franchisee1.address,
         THIRTY_DAYS,
         10,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        tokenManager.target,
+        ethers.ZeroAddress
       );
       await franchiseManager.grantFranchise(
         franchisee2.address,
         THIRTY_DAYS,
         20,
-        HALF_ETH
+        HALF_ETH,
+        tokenManager.target,
+        ethers.ZeroAddress
       );
 
       expect(bnToNumber(await franchiseManager.franchiseCount())).to.equal(2);
@@ -238,7 +283,9 @@ describe("FranchiseManager", function () {
         franchisee1.address,
         THIRTY_DAYS,
         5,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        tokenManager.target,
+        ethers.ZeroAddress
       );
     });
 
@@ -319,7 +366,8 @@ describe("FranchiseManager", function () {
       const balAfter = await ethers.provider.getBalance(franchisee1.address);
 
       // Should only have paid feePerPoll + gas
-      const diff = balBefore - balAfter - gasUsed;
+      const gasUsedBig = BigInt(receipt!.gasUsed) * BigInt(receipt!.gasPrice);
+      const diff = balBefore - balAfter - gasUsedBig;
       expect(diff).to.equal(FEE_PER_POLL);
     });
 
@@ -337,7 +385,8 @@ describe("FranchiseManager", function () {
       const balAfter = await ethers.provider.getBalance(franchisee1.address);
 
       // Should only have paid gas (fee = 0 for first poll)
-      const diff = balBefore - balAfter - gasUsed;
+      const gasUsedBig = BigInt(receipt!.gasUsed) * BigInt(receipt!.gasPrice);
+      const diff = balBefore - balAfter - gasUsedBig;
       expect(diff).to.equal(0n);
     });
 
@@ -356,7 +405,9 @@ describe("FranchiseManager", function () {
         franchisee2.address,
         2, // 2 seconds
         10,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        tokenManager.target,
+        ethers.ZeroAddress
       );
 
       // Fast forward past expiry
@@ -377,7 +428,9 @@ describe("FranchiseManager", function () {
         franchisee2.address,
         THIRTY_DAYS,
         2,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       const now = await getCurrentTimestamp();
@@ -457,7 +510,9 @@ describe("FranchiseManager", function () {
         franchisee1.address,
         THIRTY_DAYS,
         10,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        tokenManager.target,
+        ethers.ZeroAddress
       );
     });
 
@@ -577,7 +632,9 @@ describe("FranchiseManager", function () {
         franchisee2.address,
         2,
         10,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        tokenManager.target,
+        ethers.ZeroAddress
       );
 
       await ethers.provider.send("evm_increaseTime", [5]);
@@ -607,7 +664,9 @@ describe("FranchiseManager", function () {
         franchisee2.address,
         THIRTY_DAYS,
         10,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       await expect(
@@ -667,7 +726,9 @@ describe("FranchiseManager", function () {
         franchisee1.address,
         THIRTY_DAYS,
         10,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       // Verify franchise is active
@@ -683,7 +744,9 @@ describe("FranchiseManager", function () {
         franchisee1.address,
         2,
         10,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       await ethers.provider.send("evm_increaseTime", [5]);
@@ -698,7 +761,9 @@ describe("FranchiseManager", function () {
         franchisee2.address,
         THIRTY_DAYS,
         1, // only 1 poll
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       const now = await getCurrentTimestamp();
@@ -721,7 +786,9 @@ describe("FranchiseManager", function () {
         franchisee1.address,
         THIRTY_DAYS,
         5,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
     });
 
@@ -769,10 +836,10 @@ describe("FranchiseManager", function () {
       const ownerBalBefore = await ethers.provider.getBalance(owner.address);
       const tx = await franchiseManager.withdrawFees();
       const receipt = await tx.wait();
-      const gasUsed = receipt!.gasUsed * receipt!.gasPrice;
+      const gasUsedBig = BigInt(receipt!.gasUsed) * BigInt(receipt!.gasPrice);
       const ownerBalAfter = await ethers.provider.getBalance(owner.address);
 
-      expect(ownerBalAfter - ownerBalBefore + gasUsed).to.equal(FEE_PER_POLL);
+      expect(ownerBalAfter - ownerBalBefore + gasUsedBig).to.equal(FEE_PER_POLL);
     });
 
     it("should emit FeesWithdrawn event", async function () {
@@ -831,7 +898,9 @@ describe("FranchiseManager", function () {
         franchisee1.address,
         THIRTY_DAYS,
         3,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       expect(bnToNumber(await franchiseManager.remainingPolls(1))).to.equal(3);
@@ -849,7 +918,9 @@ describe("FranchiseManager", function () {
         franchisee1.address,
         THIRTY_DAYS,
         10,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       expect(await franchiseManager.isFranchiseActive(1)).to.be.true;
@@ -860,7 +931,9 @@ describe("FranchiseManager", function () {
         franchisee1.address,
         2,
         10,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       await ethers.provider.send("evm_increaseTime", [5]);
@@ -878,7 +951,9 @@ describe("FranchiseManager", function () {
         franchisee1.address,
         2,
         10,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       await ethers.provider.send("evm_increaseTime", [5]);
@@ -893,7 +968,9 @@ describe("FranchiseManager", function () {
         franchisee1.address,
         THIRTY_DAYS,
         1,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       const now = await getCurrentTimestamp();
@@ -932,7 +1009,7 @@ describe("FranchiseManager", function () {
       await expect(
         electionsManager
           .connect(franchisee1)
-          .createPoll("Direct Poll", franchisee1.address, now + 60, 3600, false, false)
+          .createPoll("Direct Poll", franchisee1.address, now + 60, 3600, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
       ).to.be.revertedWith("Not authorized");
     });
 
@@ -960,7 +1037,9 @@ describe("FranchiseManager", function () {
         franchisee1.address,
         THIRTY_DAYS,
         5,
-        0 // free polls
+        0, // free polls
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       const now = await getCurrentTimestamp();
@@ -980,7 +1059,9 @@ describe("FranchiseManager", function () {
         franchisee1.address,
         THIRTY_DAYS,
         5,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       const now = await getCurrentTimestamp();
@@ -1023,7 +1104,9 @@ describe("FranchiseManager", function () {
         franchisee1.address,
         THIRTY_DAYS,
         1,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       const now = await getCurrentTimestamp();
@@ -1036,7 +1119,9 @@ describe("FranchiseManager", function () {
         franchisee1.address,
         THIRTY_DAYS,
         3,
-        HALF_ETH
+        HALF_ETH,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       const fid = bnToNumber(
@@ -1053,7 +1138,9 @@ describe("FranchiseManager", function () {
         franchisee1.address,
         THIRTY_DAYS,
         100,
-        FEE_PER_POLL
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       const f = await franchiseManager.getFranchise(1);
@@ -1066,6 +1153,273 @@ describe("FranchiseManager", function () {
       await expect(
         FranchiseManager.deploy(ethers.ZeroAddress)
       ).to.be.revertedWith("Invalid address");
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  //  ADD POLLS TO EXISTING FRANCHISE
+  // ══════════════════════════════════════════════════════════════
+
+  describe("Add Polls", function () {
+    beforeEach(async function () {
+      await franchiseManager.grantFranchise(
+        franchisee1.address,
+        THIRTY_DAYS,
+        5,
+        FEE_PER_POLL,
+        tokenManager.target,
+        ethers.ZeroAddress
+      );
+    });
+
+    it("should add polls to an active franchise", async function () {
+      await franchiseManager.addPolls(1, 10);
+      const f = await franchiseManager.getFranchise(1);
+      expect(bnToNumber(f.maxPolls)).to.equal(15);
+    });
+
+    it("should emit PollsAdded event", async function () {
+      await expect(franchiseManager.addPolls(1, 10))
+        .to.emit(franchiseManager, "PollsAdded")
+        .withArgs(1, 10, 15);
+    });
+
+    it("should reflect in remainingPolls", async function () {
+      expect(bnToNumber(await franchiseManager.remainingPolls(1))).to.equal(5);
+      await franchiseManager.addPolls(1, 20);
+      expect(bnToNumber(await franchiseManager.remainingPolls(1))).to.equal(25);
+    });
+
+    it("should revert if non-owner calls addPolls", async function () {
+      await expect(
+        franchiseManager.connect(franchisee1).addPolls(1, 5)
+      ).to.be.revertedWith("Only owner");
+    });
+
+    it("should revert if franchise does not exist", async function () {
+      await expect(
+        franchiseManager.addPolls(999, 5)
+      ).to.be.revertedWith("Franchise does not exist");
+    });
+
+    it("should revert if franchise is expired", async function () {
+      // Grant with 1 second duration
+      await franchiseManager.grantFranchise(
+        franchisee2.address,
+        1,
+        5,
+        FEE_PER_POLL,
+        tokenManager.target,
+        ethers.ZeroAddress
+      );
+      await ethers.provider.send("evm_increaseTime", [2]);
+      await ethers.provider.send("evm_mine", []);
+
+      await expect(
+        franchiseManager.addPolls(2, 5)
+      ).to.be.revertedWith("Franchise expired");
+    });
+
+    it("should allow adding polls to an exhausted franchise", async function () {
+      // Grant with 1 poll
+      await franchiseManager.grantFranchise(
+        franchisee2.address,
+        THIRTY_DAYS,
+        1,
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
+      );
+      const now = await getCurrentTimestamp();
+      await franchiseManager
+        .connect(franchisee2)
+        .createFranchisePoll("Exhaust", now + 60, 3600, false, false);
+
+      // addPolls should succeed even when franchise is exhausted
+      await franchiseManager.addPolls(2, 5);
+      const f = await franchiseManager.getFranchise(2);
+      expect(bnToNumber(f.maxPolls)).to.equal(6);
+    });
+
+    it("should revert if additionalPolls is 0", async function () {
+      await expect(
+        franchiseManager.addPolls(1, 0)
+      ).to.be.revertedWith("Must add > 0");
+    });
+
+    it("should revert if total exceeds 100", async function () {
+      await expect(
+        franchiseManager.addPolls(1, 96)
+      ).to.be.revertedWith("Exceeds 100 poll cap");
+    });
+
+    it("should allow adding up to exactly 100", async function () {
+      await franchiseManager.addPolls(1, 95); // 5 + 95 = 100
+      const f = await franchiseManager.getFranchise(1);
+      expect(bnToNumber(f.maxPolls)).to.equal(100);
+    });
+
+    it("should work after some polls are used", async function () {
+      const now = await getCurrentTimestamp();
+      await franchiseManager
+        .connect(franchisee1)
+        .createFranchisePoll("P1", now + 60, 3600, false, false);
+      await franchiseManager
+        .connect(franchisee1)
+        .createFranchisePoll("P2", now + 60, 3600, false, false, {
+          value: FEE_PER_POLL,
+        });
+
+      // 2 used out of 5, add 10 more -> 15 total, 13 remaining
+      await franchiseManager.addPolls(1, 10);
+      expect(bnToNumber(await franchiseManager.remainingPolls(1))).to.equal(13);
+    });
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  //  FRANCHISE SUPERSEDE (RE-GRANT)
+  // ══════════════════════════════════════════════════════════════
+
+  describe("Franchise Supersede", function () {
+    it("should supersede active franchise and preserve old polls", async function () {
+      await franchiseManager.grantFranchise(
+        franchisee1.address,
+        THIRTY_DAYS,
+        5,
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
+      );
+
+      // Create a poll under franchise 1
+      const now = await getCurrentTimestamp();
+      await franchiseManager
+        .connect(franchisee1)
+        .createFranchisePoll("Old Franchise Poll", now + 60, 3600, false, false);
+
+      // Old poll exists on ElectionsManager
+      const pollCountBefore = bnToNumber(await electionsManager.pollsCount());
+      expect(pollCountBefore).to.be.greaterThan(0);
+
+      // Supersede with new franchise
+      await franchiseManager.grantFranchise(
+        franchisee1.address,
+        THIRTY_DAYS,
+        10,
+        HALF_ETH,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
+      );
+
+      // Old poll still exists on ElectionsManager (NOT deleted)
+      const poll = await electionsManager.polls(pollCountBefore);
+      expect(poll.title).to.equal("Old Franchise Poll");
+      expect(poll.admin).to.equal(franchisee1.address);
+      expect(poll.exists).to.be.true;
+    });
+
+    it("should allow creating polls under new franchise after supersede", async function () {
+      await franchiseManager.grantFranchise(
+        franchisee1.address,
+        THIRTY_DAYS,
+        5,
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
+      );
+
+      // Use a poll
+      const now = await getCurrentTimestamp();
+      await franchiseManager
+        .connect(franchisee1)
+        .createFranchisePoll("Pre-supersede", now + 60, 3600, false, false);
+
+      // Supersede
+      await franchiseManager.grantFranchise(
+        franchisee1.address,
+        THIRTY_DAYS,
+        3,
+        HALF_ETH,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
+      );
+
+      // New franchise should start fresh (0 polls used, first free)
+      const newFid = bnToNumber(
+        await franchiseManager.franchiseeToId(franchisee1.address)
+      );
+      const f = await franchiseManager.getFranchise(newFid);
+      expect(bnToNumber(f.pollsUsed)).to.equal(0);
+      expect(bnToNumber(f.maxPolls)).to.equal(3);
+      expect(f.feePerPoll).to.equal(HALF_ETH);
+
+      // Create poll under new franchise (first is free)
+      const now2 = await getCurrentTimestamp();
+      await franchiseManager
+        .connect(franchisee1)
+        .createFranchisePoll("Post-supersede", now2 + 60, 3600, false, false);
+
+      const fAfter = await franchiseManager.getFranchise(newFid);
+      expect(bnToNumber(fAfter.pollsUsed)).to.equal(1);
+    });
+
+    it("should not allow old franchise to create polls after supersede", async function () {
+      await franchiseManager.grantFranchise(
+        franchisee1.address,
+        THIRTY_DAYS,
+        5,
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
+      );
+
+      // Supersede with new franchise
+      await franchiseManager.grantFranchise(
+        franchisee1.address,
+        THIRTY_DAYS,
+        3,
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
+      );
+
+      // franchiseeToId now points to franchise 2
+      // franchisee can only use the new one; old is orphaned
+      const fid = bnToNumber(
+        await franchiseManager.franchiseeToId(franchisee1.address)
+      );
+      expect(fid).to.equal(2);
+
+      // Old franchise 1 still exists but is disconnected from the address
+      const f1 = await franchiseManager.getFranchise(1);
+      expect(f1.franchisee).to.equal(franchisee1.address); // record preserved
+      expect(bnToNumber(f1.maxPolls)).to.equal(5); // untouched
+    });
+
+    it("should emit FranchiseSuperseded and FranchiseGranted events", async function () {
+      await franchiseManager.grantFranchise(
+        franchisee1.address,
+        THIRTY_DAYS,
+        5,
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
+      );
+
+      const tx = await franchiseManager.grantFranchise(
+        franchisee1.address,
+        THIRTY_DAYS,
+        3,
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
+      );
+
+      await expect(tx)
+        .to.emit(franchiseManager, "FranchiseSuperseded")
+        .withArgs(1, 2, franchisee1.address);
+      await expect(tx)
+        .to.emit(franchiseManager, "FranchiseGranted");
     });
   });
 });

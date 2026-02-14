@@ -73,7 +73,9 @@ describe("Production-Grade Events Verification", function () {
                 startTime,
                 duration,
                 true,  // tokenVotingEnabled
-                false  // tokenVotingRequired
+                false,  // tokenVotingRequired
+                ethers.ZeroAddress,
+                ethers.ZeroAddress
             );
 
             // Wait for transaction and get events
@@ -121,7 +123,9 @@ describe("Production-Grade Events Verification", function () {
                 now + 20,
                 1000,
                 false,
-                false
+                false,
+                ethers.ZeroAddress,
+                ethers.ZeroAddress
             );
 
             // Filter events by admin
@@ -151,7 +155,9 @@ describe("Production-Grade Events Verification", function () {
                 now + 10,
                 1000,
                 true,  // token voting enabled
-                false  // not required
+                false,  // not required
+                ethers.ZeroAddress,
+                ethers.ZeroAddress
             );
             pollId = 3;
 
@@ -288,7 +294,9 @@ describe("Production-Grade Events Verification", function () {
                 now + 100,
                 1000,
                 false,
-                false
+                false,
+                ethers.ZeroAddress,
+                ethers.ZeroAddress
             );
             pollId = 4;
         });
@@ -377,7 +385,9 @@ describe("Production-Grade Events Verification", function () {
                 now + 100,
                 3600,  // 1 hour (must be >= 300 seconds)
                 false,
-                false
+                false,
+                ethers.ZeroAddress,
+                ethers.ZeroAddress
             );
             pollId = 5;
 
@@ -424,7 +434,9 @@ describe("Production-Grade Events Verification", function () {
                 now + 100,
                 3600,  // 1 hour (must be >= 300 seconds)
                 true,  // Enable token voting (creates token)
-                false
+                false,
+                ethers.ZeroAddress,
+                ethers.ZeroAddress
             );
             await txPoll.wait();
 
@@ -468,7 +480,9 @@ describe("Production-Grade Events Verification", function () {
                 now + 100,
                 3600,  // 1 hour (must be >= 300 seconds)
                 true,
-                false
+                false,
+                ethers.ZeroAddress,
+                ethers.ZeroAddress
             );
             await txPoll.wait();
 

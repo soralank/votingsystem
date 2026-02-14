@@ -62,7 +62,9 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       now + 10,
       1000,
       opts.tokenEnabled ?? false,
-      opts.tokenRequired ?? false
+      opts.tokenRequired ?? false,
+      ethers.ZeroAddress,
+      ethers.ZeroAddress
     );
     await tx.wait();
     return bnToNumber(await voting.pollsCount());
@@ -109,7 +111,9 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       const tx = await voting.connect(admin).setMaxChoices(pollId, 2);
       const receipt = await tx.wait();
 
-      expect(bnToNumber(await voting.pollMaxChoices(pollId))).to.equal(2);
+      const multiChoiceVotingAddr = await voting.multiChoiceVoting();
+      const multiChoiceVoting = await ethers.getContractAt("MultiChoiceVoting", multiChoiceVotingAddr);
+      expect(bnToNumber(await multiChoiceVoting.pollMaxChoices(pollId))).to.equal(2);
       console.log("✓ Multi-choice configured: max 2 choices");
     });
 
@@ -246,10 +250,12 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
   describe("Quadratic Voting", function () {
     it("should enable quadratic voting", async function () {
       const pollId = await createStandardPoll("Quadratic Test", { tokenEnabled: true });
-      expect(await voting.quadraticVotingEnabled(pollId)).to.be.false;
+      const quadVotingAddr = await voting.quadraticVoting();
+      const quadVoting = await ethers.getContractAt("QuadraticVoting", quadVotingAddr);
+      expect(await quadVoting.quadraticVotingEnabled(pollId)).to.be.false;
 
       await voting.connect(admin).enableQuadraticVoting(pollId);
-      expect(await voting.quadraticVotingEnabled(pollId)).to.be.true;
+      expect(await quadVoting.quadraticVotingEnabled(pollId)).to.be.true;
       console.log("✓ Quadratic voting enabled");
     });
 
@@ -276,7 +282,9 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       await voting.connect(alice).voteQuadratic(pollId, [1, 2], [3, 2]);
 
       // Check token spend
-      expect(bnToNumber(await voting.quadraticTokensSpent(pollId, alice.address))).to.equal(13);
+      const quadVotingAddr2 = await voting.quadraticVoting();
+      const quadVoting2 = await ethers.getContractAt("QuadraticVoting", quadVotingAddr2);
+      expect(bnToNumber(await quadVoting2.quadraticTokensSpent(pollId, alice.address))).to.equal(13);
 
       // Check remaining balance: 20 - 13 = 7
       const balance = await tokenManager.getTokenBalance(pollId, alice.address);
@@ -568,8 +576,10 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       const pollId = await createStandardPoll("IPFS Event Test");
       const ipfsURI = "ipfs://QmTest123";
 
+      const metaVotingAddr = await voting.metadataVoting();
+      const metaVoting = await ethers.getContractAt("MetadataVoting", metaVotingAddr);
       await expect(voting.connect(admin).setPollMetadata(pollId, ipfsURI))
-        .to.emit(voting, "PollMetadataSet")
+        .to.emit(metaVoting, "PollMetadataSet")
         .withArgs(pollId, ipfsURI);
     });
 

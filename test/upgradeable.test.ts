@@ -114,7 +114,9 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
         now + 10,
         1000,
         true,
-        false
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       pollIdBeforeUpgrade = bnToNumber(await electionsManagerV1.pollsCount());
@@ -276,7 +278,9 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
         now + 10,
         1000,
         false,
-        false
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       pollIdV2 = bnToNumber(await electionsManagerV2.pollsCount());
@@ -508,7 +512,9 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
         franchisee.address,
         86400,           // 1 day
         5,               // max 5 polls
-        ethers.parseEther("0.01") // fee per poll
+        ethers.parseEther("0.01"), // fee per poll
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       const fId = await franchiseManager.franchiseeToId(franchisee.address);
@@ -544,7 +550,9 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
           now + 100,
           600,
           false,
-          false
+          false,
+          ethers.ZeroAddress,
+          ethers.ZeroAddress
         )
       ).to.be.revertedWith("Not authorized");
 
@@ -559,7 +567,9 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
         now + 100,
         600,
         false,
-        false
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       const pollCount = bnToNumber(await electionsManagerV2.pollsCount());

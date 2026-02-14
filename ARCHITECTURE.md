@@ -1,6 +1,6 @@
-# System Architecture - Voting System v4.0
+# System Architecture - Voting System v4.1
 
-Complete technical architecture documentation for the trustless blockchain voting platform with secret ballot, infrastructure lock, democratic reveal, and token-based gasless voting.
+Complete technical architecture documentation for the trustless blockchain voting platform with secret ballot, infrastructure lock, democratic reveal, token-based gasless voting, and **modular composition** (multi-choice, quadratic, delegation, and metadata modules).
 
 ---
 
@@ -24,7 +24,7 @@ Complete technical architecture documentation for the trustless blockchain votin
 
 ## 🎯 Overview
 
-The Voting System v4.0 is a **trustless** blockchain voting platform built on Ethereum. "Trustless" means voters do not need to trust the admin or contract owner to conduct a fair election — the protocol enforces fairness through smart contract logic.
+The Voting System v4.1 is a **trustless** blockchain voting platform built on Ethereum. "Trustless" means voters do not need to trust the admin or contract owner to conduct a fair election — the protocol enforces fairness through smart contract logic.
 
 ### Key Characteristics
 
@@ -61,6 +61,7 @@ The system ensures election integrity through five key mechanisms:
      ✗ Cannot change TokenManager
      ✗ Cannot change VotingPaymaster
      ✗ Cannot change SecretBallotManager
+     ✗ Cannot change FranchiseManager
 
   2. SECRET BALLOT (Commit-Reveal)
      Voting period: Voters submit keccak256(pollId, optionId, salt, voter)
@@ -74,12 +75,12 @@ The system ensures election integrity through five key mechanisms:
      ✗ Admin cannot withhold results
 
   4. ADMIN BYPASS REMOVAL
-     Before reveal, these revert for everyone (including owner/admin):
-     ✗ getOption()        — vote counts hidden
-     ✗ getVoterChoice()   — individual votes hidden
-     ✗ getWinner()        — winner hidden
-     ✗ getVoterMultiChoices() — multi-choice hidden
-     ✗ getQuadraticVotes()    — quadratic hidden
+     Before reveal, these return zero/empty for everyone (including owner/admin):
+     • getOption()        — returns (id, name, 0) — vote counts hidden
+     • getVoterChoice()   — requires revealed, reverts otherwise
+     • getWinner()        — requires revealed, reverts otherwise
+     • getVoterMultiChoices() — requires revealed, reverts otherwise
+     • getQuadraticVotes()    — requires revealed, reverts otherwise
 
   5. METADATA LOCK
      setPollMetadata() only works before poll startTime
@@ -99,6 +100,7 @@ The system ensures election integrity through five key mechanisms:
               │  setTokenManager()   │ ← Only works before lock
               │  setVotingPaymaster()│
               │  setSecretBallotMgr()│
+              │  setFranchiseManager()│
               └──────────┬───────────┘
                          │
                          ▼
@@ -114,6 +116,7 @@ The system ensures election integrity through five key mechanisms:
               │  setTokenManager()   │ → reverts "Infra locked"
               │  setVotingPaymaster()│ → reverts "Infra locked"
               │  setSecretBallotMgr()│ → reverts "Infra locked"
+              │  setFranchiseManager()│ → reverts "Infra locked"
               └──────────────────────┘
 ```
 
@@ -125,7 +128,7 @@ The system ensures election integrity through five key mechanisms:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                        VOTING SYSTEM v4.0 ARCHITECTURE                        │
+│                        VOTING SYSTEM v4.1 ARCHITECTURE                        │
 └──────────────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -192,7 +195,17 @@ Token Vote (with gas):
   User → MetaMask → ElectionsManager.voteInPollWithToken() → TokenManager.burn() → Event
 
 Gasless Vote:
-  User → Sign EIP-712 → Relayer → VotingPaymaster.executeVote() → TokenManager.burn() → Event
+  User → Sign EIP-712 → Relayer → VotingPaymaster.executeVoteWithToken() → TokenManager.burn() → Event
+
+Multi-Choice Vote:
+  User → MetaMask → ElectionsManager.voteMultiChoice(optionIds[]) → MultiChoiceVoting state → Event
+
+Quadratic Vote:
+  User → MetaMask → ElectionsManager.voteQuadratic(optionIds[], amounts[]) → QuadraticVoting state → Token burn → Event
+
+Delegated Vote:
+  Delegator → ElectionsManager.delegateVote() → DelegationVoting state
+  Delegate → ElectionsManager.voteAsDelegate() → State Update → Event
 
 Secret Ballot Vote:
   Phase 1: User → SecretBallotManager.commitVote(hash) → Store commitment
@@ -201,6 +214,9 @@ Secret Ballot Vote:
 
 Democratic Reveal:
   Anyone → ElectionsManager.revealResults(pollId) → (after endTime + buffer + 1hr)
+
+Franchise Poll Creation:
+  Franchisee → FranchiseManager.createFranchisePoll() → ElectionsManager.createPoll() → Event
 ```
 
 ---
@@ -232,6 +248,13 @@ Democratic Reveal:
   (Token Factory) (Gas Sponsor)  Manager       (Per-Poll ERC20)
                                  (Commit-Reveal)
 
+  Module Contracts (auto-deployed by ElectionsManager constructor):
+  ┌─────────────────┐ ┌──────────────────┐ ┌──────────────────┐ ┌───────────────┐
+  │ MultiChoiceVoting│ │ QuadraticVoting   │ │ DelegationVoting  │ │MetadataVoting │
+  │ (Max choices,    │ │ (Quadratic costs, │ │ (Delegation pairs,│ │(IPFS URIs)    │
+  │  voter selections)│ │  vote amounts)    │ │  delegation count)│ │               │
+  └─────────────────┘ └──────────────────┘ └──────────────────┘ └───────────────┘
+
   FranchiseManager.sol (Standalone)
   (Sub-Admin Franchise System → calls ElectionsManager.createPoll)
 
@@ -252,7 +275,11 @@ UPGRADEABLE VERSION (UUPS):
 
 | Contract | Purpose | Key Responsibilities |
 |----------|---------|---------------------|
-| **ElectionsManager** | Main voting logic | Poll lifecycle, voting, results, trust features |
+| **ElectionsManager** | Main voting logic | Poll lifecycle, voting, results, trust features, per-poll managers |
+| **MultiChoiceVoting** | Module: multi-choice | Store maxChoices, voter selections per poll |
+| **QuadraticVoting** | Module: quadratic | Store quadratic enabled flag, vote amounts, costs |
+| **DelegationVoting** | Module: delegation | Store delegation pairs, delegation counts |
+| **MetadataVoting** | Module: metadata | Store IPFS metadata URIs per poll |
 | **FranchiseManager** | Franchise system | Grant franchises, create polls, transfers |
 | **SecretBallotManager** | Commit-reveal | Commit hashes, verify reveals, phase tracking |
 | **TokenManager** | Token factory | Create tokens, allocate, burn |
@@ -514,27 +541,44 @@ enum VoteMethod {
 ### State Mappings
 
 ```
-Global State:
+Global State (ElectionsManager):
 ├── owner: address
 ├── pollsCount: uint
 ├── tokenManager: TokenManager
 ├── votingPaymaster: VotingPaymaster
 ├── secretBallotMgr: address
-├── infrastructureLocked: bool          ← TRUST: permanent lock
+├── franchiseMgr: address                ← FranchiseManager address
+├── infrastructureLocked: bool           ← TRUST: permanent lock
 ├── pollTitles: mapping(string => bool)
+├── multiChoiceVoting: MultiChoiceVoting ← module contract address
+├── quadraticVoting: QuadraticVoting     ← module contract address
+├── delegationVoting: DelegationVoting   ← module contract address
+└── metadataVoting: MetadataVoting       ← module contract address
 
-Per-Poll State:
+Per-Poll State (ElectionsManager):
 ├── polls: mapping(uint => Poll)
 ├── options: mapping(uint => mapping(uint => Option))   ← PRIVATE
+├── pollOptionNames: mapping(uint => mapping(uint => string))
 ├── authorizedVoters: mapping(uint => mapping(address => bool))
 ├── hasVoted: mapping(uint => mapping(address => bool))
 ├── voterChoice: mapping(uint => mapping(address => uint))  ← PRIVATE
 ├── voteMethod: mapping(uint => mapping(address => VoteMethod))
 ├── secretBallot: mapping(uint => bool)                 ← TRUST: commit-reveal flag
-├── pollMaxChoices: mapping(uint => uint)
-├── quadraticVotingEnabled: mapping(uint => bool)
-├── voteDelegation: mapping(uint => mapping(address => address))
-└── pollMetadataURI: mapping(uint => string)
+├── pollTokenManager: mapping(uint => address)           ← per-poll custom TokenManager
+└── pollVotingPaymaster: mapping(uint => address)        ← per-poll custom Paymaster
+
+Module Contract State (auto-deployed, owned by ElectionsManager):
+├── MultiChoiceVoting:
+│   ├── pollMaxChoices: mapping(uint => uint)
+│   └── voterMultiChoices: mapping(uint => mapping(address => uint[]))
+├── QuadraticVoting:
+│   ├── quadraticVotingEnabled: mapping(uint => bool)
+│   └── quadraticVotes: mapping(uint => mapping(address => mapping(uint => uint)))
+├── DelegationVoting:
+│   ├── voteDelegation: mapping(uint => mapping(address => address))
+│   └── delegationCount: mapping(uint => mapping(address => uint))
+└── MetadataVoting:
+    └── pollMetadataURI: mapping(uint => string)
 
 SecretBallotManager State:
 ├── voteCommitments: mapping(uint => mapping(address => bytes32))  ← PRIVATE
@@ -552,7 +596,7 @@ SecretBallotManager State:
 
 | Function | Owner | Poll Admin | Authorized Voter | Anyone |
 |----------|-------|------------|------------------|--------|
-| createPoll | ✅ | ❌ | ❌ | ❌ |
+| createPoll | ✅ | ❌ | ❌ | ❌* |
 | addOptionToPoll | ✅ | ✅ | ❌ | ❌ |
 | addVoters / addVotersWithTokens | ✅ | ✅ | ❌ | ❌ |
 | enableSecretBallot | ✅ | ✅ | ❌ | ❌ |
@@ -569,7 +613,10 @@ SecretBallotManager State:
 | setTokenManager (before lock) | ✅ | ❌ | ❌ | ❌ |
 | setVotingPaymaster (before lock) | ✅ | ❌ | ❌ | ❌ |
 | setSecretBallotManager (before lock) | ✅ | ❌ | ❌ | ❌ |
+| setFranchiseManager (before lock) | ✅ | ❌ | ❌ | ❌ |
 | transferOwnership | ✅ | ❌ | ❌ | ❌ |
+
+\*createPoll: Also callable by registered FranchiseManager (via `createFranchisePoll()`)
 
 **Key trust changes from v3.0:**
 - `revealResults` → **Anyone** (was admin-only)
@@ -632,13 +679,27 @@ All events use **indexed parameters** for efficient filtering:
 event PollCreated(uint indexed pollId, string title, address indexed admin, uint startTime, uint endTime, bool tokenVotingEnabled, bool tokenVotingRequired);
 event OptionAdded(uint indexed pollId, uint indexed optionId, string name);
 event Voted(uint indexed pollId, address indexed voter, uint indexed optionId, VoteMethod method);
+event VotedMultiChoice(uint indexed pollId, address indexed voter, uint[] optionIds, VoteMethod method);
+event VotedWithToken(uint indexed pollId, address indexed voter, uint indexed optionId);
 event ResultsRevealed(uint indexed pollId);
 event VoterAuthorized(uint indexed pollId, address indexed voter);
 event VoterUnauthorized(uint indexed pollId, address indexed voter);
 event SecretBallotEnabled(uint indexed pollId);
 event SecretBallotManagerSet(address indexed manager);
+event FranchiseManagerSet(address indexed manager);
+event TokenManagerSet(address indexed tokenManager);
+event PaymasterSet(address indexed paymaster);
 event InfrastructureLocked();
 event PollMetadataSet(uint indexed pollId, string metadataURI);
+
+// Module Contract Events (emitted from module contracts)
+event MultiChoiceConfigured(uint indexed pollId, uint maxChoices);              // MultiChoiceVoting
+event QuadraticVotingEnabled(uint indexed pollId);                              // QuadraticVoting
+event VotedQuadratic(uint indexed pollId, address indexed voter, uint[] optionIds, uint[] voteAmounts, uint totalCost); // QuadraticVoting
+event VoteDelegated(uint indexed pollId, address indexed delegator, address indexed delegatee);   // DelegationVoting
+event DelegationRemoved(uint indexed pollId, address indexed delegator, address indexed previousDelegatee); // DelegationVoting
+event VotedAsDelegate(uint indexed pollId, address indexed delegate, address indexed delegator, uint optionId); // DelegationVoting
+event PollMetadataSet(uint indexed pollId, string metadataURI);                 // MetadataVoting (also re-emitted by EM)
 
 // SecretBallotManager Events
 event VoteCommitted(uint indexed pollId, address indexed voter);
@@ -648,7 +709,24 @@ event VoteRevealed(uint indexed pollId, address indexed voter, uint indexed opti
 event TokenCreated(uint256 indexed pollId, address indexed tokenAddress, string name, string symbol);
 
 // VotingPaymaster Events
-event VotedWithToken(uint256 indexed pollId, address indexed voter, uint256 indexed optionId);
+event Funded(address indexed funder, uint amount);
+event Withdrawn(address indexed recipient, uint amount);
+event GasSponsored(uint indexed pollId, address indexed voter, uint gasUsed, uint gasPrice);
+event RelayerAdded(address indexed relayer);
+event RelayerRemoved(address indexed relayer);
+event RelayerWhitelistToggled(bool enabled);
+event AdminTransferred(address indexed previousAdmin, address indexed newAdmin);
+
+// FranchiseManager Events
+event FranchiseGranted(uint indexed franchiseId, address indexed franchisee, uint expiresAt, uint maxPolls, uint feePerPoll);
+event FranchisePollCreated(uint indexed franchiseId, uint indexed pollId, uint feePaid);
+event PollsAdded(uint indexed franchiseId, uint additionalPolls, uint newMaxPolls);
+event FranchiseSuperseded(uint indexed oldFranchiseId, uint indexed newFranchiseId, address indexed franchisee);
+event TransferRequested(uint indexed franchiseId, address indexed from, address indexed to, uint feePaid);
+event TransferApproved(uint indexed franchiseId, address indexed oldFranchisee, address indexed newFranchisee);
+event TransferRejected(uint indexed franchiseId);
+event TransferFeeSet(uint fee);
+event FeesWithdrawn(address indexed to, uint amount);
 ```
 
 ### Event Filtering Examples
@@ -735,6 +813,15 @@ const commits = await sbm.queryFilter(
 **Purpose**: Poll lifecycle management
 **States**: Not Started → Active → Ended → (Reveal Window) → Revealed
 
+### 9. Modular Composition Pattern (NEW in v4.1)
+**Purpose**: Separate advanced voting features into lightweight, independently-deployable modules
+**Implementation**: ElectionsManager auto-deploys 4 module contracts in its constructor. Each module is owned by ElectionsManager and stores feature-specific state. ElectionsManager exposes wrapper functions that delegate to modules.
+**Benefits**:
+- Keeps ElectionsManager under Ethereum's 24KB contract size limit
+- Each module can be audited independently
+- State isolation — module failures don't corrupt core voting state
+- Per-poll custom TokenManager/VotingPaymaster via `pollTokenManager[pollId]` and `pollVotingPaymaster[pollId]`
+
 ---
 
 ## 📖 References
@@ -747,7 +834,7 @@ const commits = await sbm.queryFilter(
 
 ---
 
-**Version**: 4.0.0
-**Last Updated**: 2026-02-13
+**Version**: 4.1.0
+**Last Updated**: 2026-02-14
 **Author**: soralank
 **Status**: Production-Ready ✅

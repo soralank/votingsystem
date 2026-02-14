@@ -5,6 +5,7 @@ import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
  *
  * This module deploys:
  * 1. ElectionsManager (main voting contract with token support & trust features)
+ *    - Internally deploys: MultiChoiceVoting, QuadraticVoting, DelegationVoting, MetadataVoting modules
  * 2. TokenManager (manages per-poll voting tokens)
  * 3. VotingPaymaster (sponsors gas fees for token-based votes)
  * 4. SecretBallotManager (commit-reveal voting for secret ballot polls)

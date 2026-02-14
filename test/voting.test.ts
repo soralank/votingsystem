@@ -42,7 +42,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
   it("createPoll -> add options -> votes -> totals and double-vote revert", async function () {
     const now = await getCurrentTimestamp();
-    const txCreate = await voting.connect(owner).createPoll("What's 2+2?",  admin.address,  now + 10,  1000, false, false);
+    const txCreate = await voting.connect(owner).createPoll("What's 2+2?",  admin.address,  now + 10,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
     await txCreate.wait();
     const pidBN = await voting.pollsCount();
     const pollId = bnToNumber(pidBN);
@@ -84,7 +84,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
   it("admin-only actions and permission checks for a poll", async function () {
     const now = await getCurrentTimestamp();
-    await (await voting.connect(owner).createPoll("Q",  admin.address,  now + 10,  1000, false, false)).wait();
+    await (await voting.connect(owner).createPoll("Q",  admin.address,  now + 10,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     // non-admin cannot add options to the poll
@@ -114,7 +114,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
   it("time limits, reveal and end behavior, and getVoterChoice access control for a poll", async function () {
     const now = await getCurrentTimestamp();
     const shortDuration = 400; // Must be >= MIN_POLL_DURATION (300)
-    await (await voting.connect(owner).createPoll("TimePoll",  admin.address,  now + 10,  shortDuration, false, false)).wait();
+    await (await voting.connect(owner).createPoll("TimePoll",  admin.address,  now + 10,  shortDuration, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     await (await voting.connect(admin).addOptionToPoll(pollId, "A")).wait();
@@ -164,7 +164,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
   it("reveal before endTime reverts appropriately for a poll", async function () {
     const now = await getCurrentTimestamp();
     const mediumDuration = 400; // Must be >= MIN_POLL_DURATION (300)
-    await (await voting.connect(owner).createPoll("Short2",  admin.address,  now + 10,  mediumDuration, false, false)).wait();
+    await (await voting.connect(owner).createPoll("Short2",  admin.address,  now + 10,  mediumDuration, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     // Cannot reveal before endTime + TIME_BUFFER
@@ -177,7 +177,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     await (await voting.connect(owner).transferOwnership(newOwner.address)).wait();
 
     // Old owner can still create (transfer not complete yet)
-    await (await voting.connect(owner).createPoll("StillOwner",  admin.address,  now + 2,  1000, false, false)).wait();
+    await (await voting.connect(owner).createPoll("StillOwner",  admin.address,  now + 2,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
 
     // Step 2: New owner accepts ownership
     await (await voting.connect(newOwner).acceptOwnership()).wait();
@@ -186,7 +186,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     now = await getCurrentTimestamp();
 
     // Now old owner cannot create
-    await expect(voting.connect(owner).createPoll("ShouldFail",  admin.address,  now + 2,  1000, false, false)).to.be.revertedWith(
+    await expect(voting.connect(owner).createPoll("ShouldFail",  admin.address,  now + 2,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).to.be.revertedWith(
       "Not authorized"
     );
 
@@ -194,7 +194,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     now = await getCurrentTimestamp();
     
     // New owner can create
-    await (await voting.connect(newOwner).createPoll("ByNewOwner",  admin.address,  now + 2,  1000, false, false)).wait();
+    await (await voting.connect(newOwner).createPoll("ByNewOwner",  admin.address,  now + 2,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
     expect(pollId).to.be.greaterThan(1); // Should be > 1 since old owner created one
   });
@@ -202,7 +202,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
   // New tests updated to poll wording
   it("misc getters return zero before options/votes and admin sees no-vote as 0 for poll", async function () {
     const now = await getCurrentTimestamp();
-    await (await voting.connect(owner).createPoll("EmptyPoll",  admin.address,  now + 2,  1000, false, false)).wait();
+    await (await voting.connect(owner).createPoll("EmptyPoll",  admin.address,  now + 2,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     // no options yet
@@ -215,14 +215,14 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
   it("creating multiple polls increments pollsCount", async function () {
     const now = await getCurrentTimestamp();
-    await (await voting.connect(owner).createPoll("Multi1",  admin.address,  now + 2,  1000, false, false)).wait();
-    await (await voting.connect(owner).createPoll("Multi2",  admin.address,  now + 2,  1000, false, false)).wait();
+    await (await voting.connect(owner).createPoll("Multi1",  admin.address,  now + 2,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
+    await (await voting.connect(owner).createPoll("Multi2",  admin.address,  now + 2,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     expect(bnToNumber(await voting.pollsCount())).to.equal(2);
   });
 
   it("owner (as allowed role) can add options to a poll", async function () {
     const now = await getCurrentTimestamp();
-    await (await voting.connect(owner).createPoll("OwnerAdd",  admin.address,  now + 10,  1000, false, false)).wait();
+    await (await voting.connect(owner).createPoll("OwnerAdd",  admin.address,  now + 10,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
     // owner should be allowed (owner or admin allowed) to add options to the poll
     await (await voting.connect(owner).addOptionToPoll(pollId, "OwnerOpt")).wait();
@@ -231,7 +231,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
   it("voter authorization: single voter add and vote", async function () {
     const now = await getCurrentTimestamp();
-    await (await voting.connect(owner).createPoll("AuthTest",  admin.address,  now + 10,  1000, false, false)).wait();
+    await (await voting.connect(owner).createPoll("AuthTest",  admin.address,  now + 10,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     await (await voting.connect(admin).addOptionToPoll(pollId, "Yes")).wait();
@@ -259,7 +259,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
   it("voter authorization: batch voter add", async function () {
     const now = await getCurrentTimestamp();
-    await (await voting.connect(owner).createPoll("BatchTest",  admin.address,  now + 10,  1000, false, false)).wait();
+    await (await voting.connect(owner).createPoll("BatchTest",  admin.address,  now + 10,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     await (await voting.connect(admin).addOptionToPoll(pollId, "Option1")).wait();
@@ -286,7 +286,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
   it("voter authorization: remove voter before voting", async function () {
     const now = await getCurrentTimestamp();
-    await (await voting.connect(owner).createPoll("RemoveTest",  admin.address,  now + 10,  1000, false, false)).wait();
+    await (await voting.connect(owner).createPoll("RemoveTest",  admin.address,  now + 10,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     await (await voting.connect(admin).addOptionToPoll(pollId, "Option1")).wait();
@@ -307,7 +307,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
   it("voter authorization: cannot remove voter after poll starts", async function () {
     const now = await getCurrentTimestamp();
-    await (await voting.connect(owner).createPoll("RemoveAfterStart",  admin.address,  now + 10,  1000, false, false)).wait();
+    await (await voting.connect(owner).createPoll("RemoveAfterStart",  admin.address,  now + 10,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     await (await voting.connect(admin).addOptionToPoll(pollId, "Option1")).wait();
@@ -327,7 +327,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
   it("helper functions: isPollActive returns correct status", async function () {
     const now = await getCurrentTimestamp();
     const shortDuration = 400; // Must be >= MIN_POLL_DURATION (300)
-    await (await voting.connect(owner).createPoll("ActiveTest",  admin.address,  now + 10,  shortDuration, false, false)).wait();
+    await (await voting.connect(owner).createPoll("ActiveTest",  admin.address,  now + 10,  shortDuration, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     // time-warp to start time
@@ -349,7 +349,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
   it("helper functions: getWinner returns correct winner", async function () {
     const now = await getCurrentTimestamp();
-    await (await voting.connect(owner).createPoll("WinnerTest",  admin.address,  now + 10,  1000, false, false)).wait();
+    await (await voting.connect(owner).createPoll("WinnerTest",  admin.address,  now + 10,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     await (await voting.connect(admin).addOptionToPoll(pollId, "Alice")).wait();
@@ -388,7 +388,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
   it("cannot add voters after poll ended", async function () {
     const now = await getCurrentTimestamp();
     const shortDuration = 400; // Must be >= MIN_POLL_DURATION (300)
-    await (await voting.connect(owner).createPoll("EndedPoll",  admin.address,  now + 2,  shortDuration, false, false)).wait();
+    await (await voting.connect(owner).createPoll("EndedPoll",  admin.address,  now + 2,  shortDuration, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     // advance time past end (need TIME_BUFFER after endTime)
@@ -404,7 +404,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
   it("cannot add duplicate voter", async function () {
     const now = await getCurrentTimestamp();
-    await (await voting.connect(owner).createPoll("DupVoter",  admin.address,  now + 10,  1000, false, false)).wait();
+    await (await voting.connect(owner).createPoll("DupVoter",  admin.address,  now + 10,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     await (await voting.connect(admin).addVoter(pollId, alice.address)).wait();
@@ -422,21 +422,21 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     expect(count).to.equal(0);
 
     // Create first poll
-    await (await voting.connect(owner).createPoll("Poll 1",  admin.address,  now + 2,  1000, false, false)).wait();
+    await (await voting.connect(owner).createPoll("Poll 1",  admin.address,  now + 2,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     count = bnToNumber(await voting.getPollsCount());
     expect(count).to.equal(1);
 
     // Refresh timestamp for second poll
     now = await getCurrentTimestamp();
     // Create second poll
-    await (await voting.connect(owner).createPoll("Poll 2",  admin.address,  now + 2,  1000, false, false)).wait();
+    await (await voting.connect(owner).createPoll("Poll 2",  admin.address,  now + 2,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     count = bnToNumber(await voting.getPollsCount());
     expect(count).to.equal(2);
 
     // Refresh timestamp for third poll
     now = await getCurrentTimestamp();
     // Create third poll
-    await (await voting.connect(owner).createPoll("Poll 3",  admin.address,  now + 2,  1000, false, false)).wait();
+    await (await voting.connect(owner).createPoll("Poll 3",  admin.address,  now + 2,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     count = bnToNumber(await voting.getPollsCount());
     expect(count).to.equal(3);
 
@@ -451,21 +451,21 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
   it("security: MIN_POLL_DURATION - cannot create poll with duration < 300 seconds", async function () {
     const now = await getCurrentTimestamp();
     await expect(
-      voting.connect(owner).createPoll("TooShort",  admin.address,  now + 2,  299, false, false)
+      voting.connect(owner).createPoll("TooShort",  admin.address,  now + 2,  299, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
     ).to.be.revertedWith("Poll duration too short.");
 
     await expect(
-      voting.connect(owner).createPoll("TooShort2",  admin.address,  now + 2,  100, false, false)
+      voting.connect(owner).createPoll("TooShort2",  admin.address,  now + 2,  100, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
     ).to.be.revertedWith("Poll duration too short.");
 
     // 300 seconds should work
-    await (await voting.connect(owner).createPoll("JustRight",  admin.address,  now + 2,  300, false, false)).wait();
+    await (await voting.connect(owner).createPoll("JustRight",  admin.address,  now + 2,  300, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     expect(bnToNumber(await voting.pollsCount())).to.equal(1);
   });
 
   it("security: MAX_OPTIONS - cannot add more than 100 options to a poll", async function () {
     const now = await getCurrentTimestamp();
-    await (await voting.connect(owner).createPoll("LotsOfOptions",  admin.address,  now + 300,  1000, false, false)).wait();
+    await (await voting.connect(owner).createPoll("LotsOfOptions",  admin.address,  now + 300,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     // Add 100 options (should work)
@@ -483,7 +483,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
   it("security: MAX_VOTERS_BATCH - cannot add more than 50 voters in one batch", async function () {
     const now = await getCurrentTimestamp();
-    await (await voting.connect(owner).createPoll("LotsOfVoters",  admin.address,  now + 10,  1000, false, false)).wait();
+    await (await voting.connect(owner).createPoll("LotsOfVoters",  admin.address,  now + 10,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     // Create array of 51 addresses (one more than limit)
@@ -504,7 +504,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
   it("security: vote privacy - non-admin cannot see vote counts before reveal", async function () {
     const now = await getCurrentTimestamp();
-    await (await voting.connect(owner).createPoll("PrivacyTest",  admin.address,  now + 10,  1000, false, false)).wait();
+    await (await voting.connect(owner).createPoll("PrivacyTest",  admin.address,  now + 10,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     await (await voting.connect(admin).addOptionToPoll(pollId, "Secret1")).wait();
@@ -538,7 +538,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
   it("security: TIME_BUFFER - cannot vote in last 30 seconds of poll", async function () {
     const now = await getCurrentTimestamp();
-    await (await voting.connect(owner).createPoll("BufferTest",  admin.address,  now + 10,  400, false, false)).wait();
+    await (await voting.connect(owner).createPoll("BufferTest",  admin.address,  now + 10,  400, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     await (await voting.connect(admin).addOptionToPoll(pollId, "Option1")).wait();
@@ -572,7 +572,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     // Refresh timestamp
     now = await getCurrentTimestamp();
     // Owner still has control
-    await (await voting.connect(owner).createPoll("OwnerStillInControl",  admin.address,  now + 2,  1000, false, false)).wait();
+    await (await voting.connect(owner).createPoll("OwnerStillInControl",  admin.address,  now + 2,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     expect(bnToNumber(await voting.pollsCount())).to.equal(1);
   });
 
@@ -592,7 +592,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     // Refresh timestamp
     now = await getCurrentTimestamp();
     // Verify newOwner has control
-    await (await voting.connect(newOwner).createPoll("NewOwnerPoll",  admin.address,  now + 2,  1000, false, false)).wait();
+    await (await voting.connect(newOwner).createPoll("NewOwnerPoll",  admin.address,  now + 2,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     expect(bnToNumber(await voting.pollsCount())).to.equal(1);
   });
 
@@ -602,11 +602,11 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
     // No one can create polls now
     await expect(
-      voting.connect(owner).createPoll("Fail",  admin.address,  now + 2,  1000, false, false)
+      voting.connect(owner).createPoll("Fail",  admin.address,  now + 2,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
     ).to.be.revertedWith("Not authorized");
 
     await expect(
-      voting.connect(newOwner).createPoll("Fail2",  admin.address,  now + 2,  1000, false, false)
+      voting.connect(newOwner).createPoll("Fail2",  admin.address,  now + 2,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
     ).to.be.revertedWith("Not authorized");
   });
 
@@ -615,7 +615,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     const now = await getCurrentTimestamp();
     const startTime = now + 200; // Poll starts 200 seconds in future
     const duration = 600;
-    await (await voting.connect(owner).createPoll("FuturePoll",  admin.address,  startTime,  duration, false, false)).wait();
+    await (await voting.connect(owner).createPoll("FuturePoll",  admin.address,  startTime,  duration, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     await (await voting.connect(admin).addOptionToPoll(pollId, "Yes")).wait();
@@ -629,7 +629,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     const now = await getCurrentTimestamp();
     const startTime = now + 200;
     const duration = 600;
-    await (await voting.connect(owner).createPoll("PrepPoll",  admin.address,  startTime,  duration, false, false)).wait();
+    await (await voting.connect(owner).createPoll("PrepPoll",  admin.address,  startTime,  duration, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     // Can add options before poll starts
@@ -646,7 +646,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     const now = await getCurrentTimestamp();
     const startTime = now + 10; // Give time to add option before start
     const duration = 600;
-    await (await voting.connect(owner).createPoll("StartedPoll",  admin.address,  startTime,  duration, false, false)).wait();
+    await (await voting.connect(owner).createPoll("StartedPoll",  admin.address,  startTime,  duration, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     // Add option before start
@@ -666,7 +666,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     const now = await getCurrentTimestamp();
     const startTime = now + 10; // Give time to add option before start
     const duration = 600;
-    await (await voting.connect(owner).createPoll("StartedPoll2",  admin.address,  startTime,  duration, false, false)).wait();
+    await (await voting.connect(owner).createPoll("StartedPoll2",  admin.address,  startTime,  duration, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     await (await voting.connect(admin).addOptionToPoll(pollId, "Option1")).wait();
@@ -685,7 +685,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     const now = await getCurrentTimestamp();
     const startTime = now + 20;
     const duration = 600;
-    await (await voting.connect(owner).createPoll("RemoveStarted",  admin.address,  startTime,  duration, false, false)).wait();
+    await (await voting.connect(owner).createPoll("RemoveStarted",  admin.address,  startTime,  duration, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     await (await voting.connect(admin).addOptionToPoll(pollId, "Option1")).wait();
@@ -705,7 +705,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     const now = await getCurrentTimestamp();
     const startTime = now + 10; // Give time to add option/voter before start
     const duration = 600;
-    await (await voting.connect(owner).createPoll("ActiveVoting",  admin.address,  startTime,  duration, false, false)).wait();
+    await (await voting.connect(owner).createPoll("ActiveVoting",  admin.address,  startTime,  duration, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     await (await voting.connect(admin).addOptionToPoll(pollId, "Yes")).wait();
@@ -724,7 +724,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     const now = await getCurrentTimestamp();
     const pastTime = now - 100;
     await expect(
-      voting.connect(owner).createPoll("PastPoll",  admin.address,  pastTime,  600, false, false)
+      voting.connect(owner).createPoll("PastPoll",  admin.address,  pastTime,  600, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
     ).to.be.revertedWith("Start time cannot be in the past.");
   });
 
@@ -732,21 +732,21 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     const now = await getCurrentTimestamp();
     const farFuture = now + (31 * 24 * 60 * 60); // 31 days
     await expect(
-      voting.connect(owner).createPoll("TooFar",  admin.address,  farFuture,  600, false, false)
+      voting.connect(owner).createPoll("TooFar",  admin.address,  farFuture,  600, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
     ).to.be.revertedWith("Start time too far in future.");
   });
 
   it("time validation: can create poll exactly at MAX_FUTURE_START boundary", async function () {
     const now = await getCurrentTimestamp();
     const maxFuture = now + (30 * 24 * 60 * 60); // Exactly 30 days
-    await (await voting.connect(owner).createPoll("MaxFuture",  admin.address,  maxFuture,  600, false, false)).wait();
+    await (await voting.connect(owner).createPoll("MaxFuture",  admin.address,  maxFuture,  600, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     expect(bnToNumber(await voting.pollsCount())).to.equal(1);
   });
 
   it("helper functions: getPollStartTime returns correct start time", async function () {
     const now = await getCurrentTimestamp();
     const startTime = now + 100;
-    await (await voting.connect(owner).createPoll("StartTimePoll",  admin.address,  startTime,  1000, false, false)).wait();
+    await (await voting.connect(owner).createPoll("StartTimePoll",  admin.address,  startTime,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     const returnedStartTime = bnToNumber(await voting.getPollStartTime(pollId));
@@ -756,7 +756,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
   it("helper functions: isPollStarted works correctly", async function () {
     const now = await getCurrentTimestamp();
     const startTime = now + 50;
-    await (await voting.connect(owner).createPoll("StartCheck",  admin.address,  startTime,  600, false, false)).wait();
+    await (await voting.connect(owner).createPoll("StartCheck",  admin.address,  startTime,  600, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     // Before start time
@@ -772,7 +772,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     const now = await getCurrentTimestamp();
     const startTime = now + 2;
     const duration = 400;
-    await (await voting.connect(owner).createPoll("EndCheck",  admin.address,  startTime,  duration, false, false)).wait();
+    await (await voting.connect(owner).createPoll("EndCheck",  admin.address,  startTime,  duration, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     // Before end time
@@ -789,7 +789,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     const now = await getCurrentTimestamp();
     const startTime = now + 50;
     const duration = 400;
-    await (await voting.connect(owner).createPoll("StatusPoll",  admin.address,  startTime,  duration, false, false)).wait();
+    await (await voting.connect(owner).createPoll("StatusPoll",  admin.address,  startTime,  duration, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
     const pollId = bnToNumber(await voting.pollsCount());
 
     // State 1: Scheduled (not started)

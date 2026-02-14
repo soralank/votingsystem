@@ -4,7 +4,7 @@ A secure, trustless, decentralized voting system with **secret ballot (commit-re
 
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.28+-blue.svg)](https://soliditylang.org/)
 [![Hardhat](https://img.shields.io/badge/Hardhat-3.1.3+-yellow.svg)](https://hardhat.org/)
-[![Tests](https://img.shields.io/badge/Tests-381%20passing-brightgreen.svg)](./test)
+[![Tests](https://img.shields.io/badge/Tests-396%20passing-brightgreen.svg)](./test)
 [![CI](https://img.shields.io/badge/CI-GitHub%20Actions-blue.svg)](./.github/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 
@@ -27,8 +27,8 @@ A secure, trustless, decentralized voting system with **secret ballot (commit-re
 
 ## ✨ Features
 
-### 🔐 Trust Features (v4.0)
-- **Infrastructure Lock**: Token manager, paymaster, and secret ballot manager addresses are permanently locked after the first poll is created — no admin can swap critical contracts
+### 🔐 Trust Features (v4.0+)
+- **Infrastructure Lock**: Token manager, paymaster, secret ballot manager, and franchise manager addresses are permanently locked after the first poll is created — no admin can swap critical contracts
 - **Secret Ballot (Commit-Reveal)**: Voters commit a hash during voting, then reveal after voting ends — votes are completely hidden until the reveal phase
 - **Democratic Reveal**: Anyone can call `revealResults()` after the poll ends + reveal window — no admin gatekeeping of results
 - **Admin Bypass Removal**: Admin/owner cannot peek at `getOption`, `getVoterChoice`, `getWinner`, `getVoterMultiChoices`, or `getQuadraticVotes` before results are revealed
@@ -82,8 +82,14 @@ A secure, trustless, decentralized voting system with **secret ballot (commit-re
 
 ### 🌐 IPFS Poll Metadata
 - **Off-Chain Storage**: Store rich poll descriptions on IPFS
-- **On-Chain Reference**: `metadataURI` stored per poll
+- **On-Chain Reference**: `metadataURI` stored per poll via MetadataVoting module
 - **Gas Efficient**: Reduces on-chain storage costs
+
+### 🧩 Modular Composition (v4.1)
+- **4 Module Contracts**: MultiChoiceVoting, QuadraticVoting, DelegationVoting, MetadataVoting
+- **Auto-Deployed**: ElectionsManager deploys all 4 modules in its constructor
+- **Per-Poll Managers**: Each poll can use a custom TokenManager and VotingPaymaster
+- **Size Optimized**: Feature state extracted to keep ElectionsManager under 24KB limit
 
 ### 📊 Production-Grade Events
 - **Indexed Parameters**: Efficient blockchain-level filtering
@@ -113,7 +119,7 @@ A secure, trustless, decentralized voting system with **secret ballot (commit-re
 The system is designed to be **trustless** — voters do not need to trust the admin or owner to conduct a fair election.
 
 ### Infrastructure Lock
-Once the first poll is created, `setTokenManager()`, `setVotingPaymaster()`, and `setSecretBallotManager()` are permanently disabled. This prevents an admin from swapping in a malicious contract mid-operation.
+Once the first poll is created, `setTokenManager()`, `setVotingPaymaster()`, `setSecretBallotManager()`, and `setFranchiseManager()` are permanently disabled. This prevents an admin from swapping in a malicious contract mid-operation.
 
 ```
 Deploy → Configure contracts → Create first poll → LOCKED FOREVER
@@ -154,7 +160,7 @@ Before results are revealed, **nobody** (including owner/admin) can access:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                    Voting System v4.0                     │
+│                    Voting System v4.1                     │
 └──────────────────────────────────────────────────────────┘
 
                     Ownable.sol
@@ -181,6 +187,11 @@ TokenManager  VotingPaymaster  SecretBallotManager
     ▼
 VotingToken.sol
 (Per-Poll Token)
+
+  Module Contracts (auto-deployed by ElectionsManager):
+  MultiChoiceVoting │ QuadraticVoting │ DelegationVoting │ MetadataVoting
+
+  FranchiseManager.sol (Standalone — calls ElectionsManager.createPoll)
 ```
 
 ### Upgradeable Structure (Optional)
@@ -202,11 +213,15 @@ VotingToken.sol
 
 ## 📜 Smart Contracts
 
-### Core Contracts (8)
+### Core Contracts (12)
 
 | Contract | Purpose |
-|----------|---------||
-| **ElectionsManager.sol** | Main voting contract — polls, voting, results, trust features |
+|----------|----------|
+| **ElectionsManager.sol** | Main voting contract — polls, voting, results, trust features, per-poll managers |
+| **MultiChoiceVoting.sol** | Module: multi-choice vote state (maxChoices, voter selections) |
+| **QuadraticVoting.sol** | Module: quadratic vote state (enabled flag, vote amounts, costs) |
+| **DelegationVoting.sol** | Module: delegation state (delegation pairs, delegation counts) |
+| **MetadataVoting.sol** | Module: IPFS metadata URIs per poll |
 | **FranchiseManager.sol** | Sub-admin franchise system — time-limited poll creation rights |
 | **SecretBallotManager.sol** | Commit-reveal voting for secret ballot polls |
 | **TokenManager.sol** | Creates and manages per-poll ERC20 voting tokens |
@@ -218,7 +233,7 @@ VotingToken.sol
 ### Key Functions
 
 #### ElectionsManager
-- `createPoll(title, admin, startTime, duration, tokenEnabled, tokenRequired)` — Create poll (locks infrastructure on first call)
+- `createPoll(title, admin, startTime, duration, tokenEnabled, tokenRequired, customTokenManager, customVotingPaymaster)` — Create poll (8 params; locks infrastructure on first call)
 - `addOptionToPoll(pollId, optionName)` — Add voting option
 - `addVotersWithTokens(pollId, voters[], tokensPerVoter)` — Authorize + allocate tokens
 - `voteInPoll(pollId, optionId)` — Traditional vote (rejects secret ballot polls)
@@ -231,7 +246,8 @@ VotingToken.sol
 - `setPollMetadata(pollId, uri)` — Set IPFS metadata (before start only)
 
 #### FranchiseManager
-- `grantFranchise(franchisee, duration, maxPolls, feePerPoll)` — Owner grants franchise
+- `grantFranchise(franchisee, duration, maxPolls, feePerPoll, tokenManager, votingPaymaster)` — Owner grants franchise (6 params; supersedes any existing)
+- `addPolls(franchiseId, additionalPolls)` — Owner adds polls to active franchise (≤100 cap)
 - `createFranchisePoll(title, startTime, duration, tokenEnabled, tokenRequired)` — Franchisee creates poll (1st free)
 - `requestTransfer(franchiseId, newFranchisee)` — Request franchise transfer (requires fee)
 - `approveTransfer(franchiseId)` / `rejectTransfer(franchiseId)` — Owner manages transfers
@@ -327,10 +343,11 @@ npx hardhat ignition deploy ignition/modules/GaslessVoting.ts --network mainnet
 ### What Gets Deployed
 
 The `GaslessVoting` module deploys and configures:
-1. **ElectionsManager** — Main voting contract
+1. **ElectionsManager** — Main voting contract (auto-deploys 4 module contracts: MultiChoiceVoting, QuadraticVoting, DelegationVoting, MetadataVoting in its constructor)
 2. **TokenManager** — Token factory (linked to ElectionsManager)
 3. **VotingPaymaster** — Gas sponsor (linked + funded with 1 ETH)
 4. **SecretBallotManager** — Commit-reveal manager (linked to ElectionsManager)
+5. **FranchiseManager** — Franchise system (linked to ElectionsManager)
 
 All references are wired up automatically. Once you create the first poll, infrastructure is permanently locked.
 
@@ -355,7 +372,7 @@ See [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) for detailed step-by-step instr
 ### Run All Tests
 
 ```bash
-# All tests (312 passing)
+# All tests (396 passing)
 npx hardhat test
 
 # With gas reporting
@@ -376,9 +393,10 @@ REPORT_GAS=true npx hardhat test
 | Event Verification | 14 | `events.production.test.ts` |
 | Advanced Features | 35 | `advancedFeatures.test.ts` |
 | Voting Token | 29 | `votingToken.test.ts` |
-| **Trust Features** | **42** | **`trustFeatures.test.ts`** |
+| Trust Features | 42 | `trustFeatures.test.ts` |
+| Franchise Manager | 83 | `franchiseManager.test.ts` |
 
-**312 tests passing** ✅
+**396 tests passing** ✅
 
 ---
 
@@ -391,7 +409,8 @@ REPORT_GAS=true npx hardhat test
 - **[ERROR_CODES.md](./docs/ERROR_CODES.md)** — 56+ documented error codes
 - **[EVENT_AUDIT.md](./docs/EVENT_AUDIT.md)** — Production-grade events guide
 - **[UPGRADEABLE_MODULE.md](./docs/UPGRADEABLE_MODULE.md)** — Upgrade system guide
-- **[TEST_RESULTS.md](./docs/TEST_RESULTS.md)** — Complete test breakdown (312 tests)
+- **[TEST_RESULTS.md](./docs/TEST_RESULTS.md)** — Complete test breakdown (396 tests)
+- **[FRONTEND_INTEGRATION.md](./docs/FRONTEND_INTEGRATION.md)** — Complete frontend integration guide (ethers.js, events, flows)
 - **[CONTRIBUTING.md](./CONTRIBUTING.md)** — Contribution guidelines
 
 ---
@@ -420,7 +439,7 @@ REPORT_GAS=true npx hardhat test
 ### Known Limitations
 - Poll admin has full control over their poll configuration before it starts (by design)
 - No vote modification after casting (permanent choice)
-- Contract size is near the 24KB limit (24,411 bytes / 24,576 max)
+- Contract size is near the 24KB limit (managed via modular composition — advanced features extracted to 4 module contracts)
 
 ### Audit Status
 - **Self-Audited**: ✅
@@ -433,17 +452,17 @@ Please report vulnerabilities to: [security@example.com]
 
 ## 🗺️ Roadmap
 
-### ✅ Completed (v4.0)
+### ✅ Completed (v4.1)
 - [x] Core voting system
 - [x] Token-based voting
 - [x] Gasless voting (meta-transactions)
 - [x] Upgradeable contracts (UUPS)
 - [x] Production-grade events
 - [x] Comprehensive error codes (56+)
-- [x] Multi-choice voting
-- [x] Quadratic voting
-- [x] Vote delegation
-- [x] IPFS poll metadata
+- [x] Multi-choice voting (via MultiChoiceVoting module)
+- [x] Quadratic voting (via QuadraticVoting module)
+- [x] Vote delegation (via DelegationVoting module)
+- [x] IPFS poll metadata (via MetadataVoting module)
 - [x] Subgraph for event indexing (The Graph)
 - [x] CI/CD pipeline (GitHub Actions + Slither)
 - [x] Security hardening (ReentrancyGuard, relayer whitelist, safe transfers)
@@ -451,7 +470,10 @@ Please report vulnerabilities to: [security@example.com]
 - [x] **SecretBallotManager (commit-reveal) extracted contract**
 - [x] **Admin bypass removal on all view functions**
 - [x] **Metadata lock (before start only)**
-- [x] 312 passing tests (11 test suites)
+- [x] **Modular composition: 4 lightweight module contracts auto-deployed**
+- [x] **Per-poll custom TokenManager and VotingPaymaster**
+- [x] **Franchise system with sub-admin poll creation**
+- [x] 396 passing tests (12 test suites)
 
 ### 🚧 In Progress
 - [ ] Frontend dApp (React + ethers.js) — separate repository
@@ -472,7 +494,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for gu
 1. Fork the repository
 2. Create feature branch: `git checkout -b feature/AmazingFeature`
 3. Make changes and add tests
-4. Run test suite: `npx hardhat test` (all 312 must pass)
+4. Run test suite: `npx hardhat test` (all 396 must pass)
 5. Commit and push
 6. Open Pull Request
 
@@ -482,8 +504,8 @@ We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for gu
 
 | Metric | Value |
 |--------|-------|
-| **Core Contracts** | 8 + 2 upgradeable |
-| **Total Tests** | 381 passing |
+| **Core Contracts** | 12 + 2 upgradeable |
+| **Total Tests** | 396 passing |
 | **Test Suites** | 12 |
 | **Test Coverage** | 95%+ |
 | **Optimizer** | Enabled (100 runs, viaIR) |
@@ -499,8 +521,8 @@ This project is licensed under the **MIT** license. See [LICENSE](./LICENSE) for
 
 ---
 
-**Version**: 4.0.0
-**Last Updated**: 2026-02-13
+**Version**: 4.1.0
+**Last Updated**: 2026-02-14
 **Status**: Production-Ready ✅
 
 **Built with ❤️ using Solidity, Hardhat, and Ethereum**

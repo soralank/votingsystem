@@ -54,14 +54,14 @@ describe("Trust Features", function () {
       expect(await em.infrastructureLocked()).to.equal(false);
 
       const now = await getCurrentTimestamp();
-      await em.connect(owner).createPoll("Poll1", admin.address, now + 10, 1000, false, false);
+      await em.connect(owner).createPoll("Poll1", admin.address, now + 10, 1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
 
       expect(await em.infrastructureLocked()).to.equal(true);
     });
 
     it("should prevent changing TokenManager after lock", async function () {
       const now = await getCurrentTimestamp();
-      await em.connect(owner).createPoll("Poll1", admin.address, now + 10, 1000, false, false);
+      await em.connect(owner).createPoll("Poll1", admin.address, now + 10, 1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
 
       const TokenManager2 = await ethers.getContractFactory("TokenManager");
       const tm2 = await TokenManager2.deploy(em.target);
@@ -76,7 +76,7 @@ describe("Trust Features", function () {
       await em.setVotingPaymaster(vp.target);
 
       const now = await getCurrentTimestamp();
-      await em.connect(owner).createPoll("Poll1", admin.address, now + 10, 1000, false, false);
+      await em.connect(owner).createPoll("Poll1", admin.address, now + 10, 1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
 
       const vp2 = await VotingPaymaster.deploy(em.target, tokenManager.target, owner.address);
       await expect(em.connect(owner).setVotingPaymaster(vp2.target))
@@ -115,7 +115,7 @@ describe("Trust Features", function () {
 
     beforeEach(async function () {
       const now = await getCurrentTimestamp();
-      await em.connect(owner).createPoll("DemoReveal", admin.address, now + 10, 400, false, false);
+      await em.connect(owner).createPoll("DemoReveal", admin.address, now + 10, 400, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
       pollId = bnToNumber(await em.pollsCount());
       await em.connect(admin).addOptionToPoll(pollId, "Yes");
       await em.connect(admin).addOptionToPoll(pollId, "No");
@@ -185,7 +185,7 @@ describe("Trust Features", function () {
   describe("Metadata Lock", function () {
     it("should allow setting metadata before poll starts", async function () {
       const now = await getCurrentTimestamp();
-      await em.connect(owner).createPoll("MetaPoll", admin.address, now + 100, 1000, false, false);
+      await em.connect(owner).createPoll("MetaPoll", admin.address, now + 100, 1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
       const pollId = bnToNumber(await em.pollsCount());
 
       await expect(em.connect(admin).setPollMetadata(pollId, "ipfs://QmTest123"))
@@ -194,7 +194,7 @@ describe("Trust Features", function () {
 
     it("should prevent setting metadata after poll starts", async function () {
       const now = await getCurrentTimestamp();
-      await em.connect(owner).createPoll("MetaPoll", admin.address, now + 10, 1000, false, false);
+      await em.connect(owner).createPoll("MetaPoll", admin.address, now + 10, 1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
       const pollId = bnToNumber(await em.pollsCount());
 
       // Time-warp past start
@@ -214,7 +214,7 @@ describe("Trust Features", function () {
 
     beforeEach(async function () {
       const now = await getCurrentTimestamp();
-      await em.connect(owner).createPoll("SecretPoll", admin.address, now + 60, 1000, false, false);
+      await em.connect(owner).createPoll("SecretPoll", admin.address, now + 60, 1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
       pollId = bnToNumber(await em.pollsCount());
       await em.connect(admin).addOptionToPoll(pollId, "Opt1");
       await em.connect(admin).addOptionToPoll(pollId, "Opt2");
@@ -233,7 +233,7 @@ describe("Trust Features", function () {
 
     it("should prevent enableSecretBallot after poll starts", async function () {
       const now = await getCurrentTimestamp();
-      await em.connect(owner).createPoll("Late", admin.address, now + 10, 1000, false, false);
+      await em.connect(owner).createPoll("Late", admin.address, now + 10, 1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
       const pid2 = bnToNumber(await em.pollsCount());
 
       const startTime = bnToNumber(await em.getPollStartTime(pid2));
@@ -251,7 +251,7 @@ describe("Trust Features", function () {
 
     it("should emit SecretBallotEnabled event", async function () {
       const now = await getCurrentTimestamp();
-      await em.connect(owner).createPoll("EventPoll", admin.address, now + 60, 1000, false, false);
+      await em.connect(owner).createPoll("EventPoll", admin.address, now + 60, 1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
       const pid = bnToNumber(await em.pollsCount());
 
       await expect(em.connect(admin).enableSecretBallot(pid))
@@ -268,7 +268,7 @@ describe("Trust Features", function () {
 
     beforeEach(async function () {
       const now = await getCurrentTimestamp();
-      await em.connect(owner).createPoll("CommitReveal", admin.address, now + 60, 1000, false, false);
+      await em.connect(owner).createPoll("CommitReveal", admin.address, now + 60, 1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
       pollId = bnToNumber(await em.pollsCount());
       await em.connect(admin).addOptionToPoll(pollId, "A");
       await em.connect(admin).addOptionToPoll(pollId, "B");
@@ -454,7 +454,7 @@ describe("Trust Features", function () {
 
     beforeEach(async function () {
       const now = await getCurrentTimestamp();
-      await em.connect(owner).createPoll("SecretTiming", admin.address, now + 60, 1000, false, false);
+      await em.connect(owner).createPoll("SecretTiming", admin.address, now + 60, 1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
       pollId = bnToNumber(await em.pollsCount());
       await em.connect(admin).addOptionToPoll(pollId, "A");
       await em.connect(admin).addVoter(pollId, alice.address);
@@ -489,7 +489,7 @@ describe("Trust Features", function () {
 
     beforeEach(async function () {
       const now = await getCurrentTimestamp();
-      await em.connect(owner).createPoll("ViewTest", admin.address, now + 60, 1000, false, false);
+      await em.connect(owner).createPoll("ViewTest", admin.address, now + 60, 1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
       pollId = bnToNumber(await em.pollsCount());
       await em.connect(admin).addOptionToPoll(pollId, "A");
       await em.connect(admin).addVoter(pollId, alice.address);
@@ -532,7 +532,7 @@ describe("Trust Features", function () {
   describe("SecretBallotManager: Access Control", function () {
     it("should reject recordSecretVote from non-SBM", async function () {
       const now = await getCurrentTimestamp();
-      await em.connect(owner).createPoll("ACL", admin.address, now + 10, 1000, false, false);
+      await em.connect(owner).createPoll("ACL", admin.address, now + 10, 1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
       const pollId = bnToNumber(await em.pollsCount());
 
       await expect(em.connect(attacker).recordSecretVote(pollId, alice.address, 1, false))
@@ -541,7 +541,7 @@ describe("Trust Features", function () {
 
     it("should reject burnTokenForCommit from non-SBM", async function () {
       const now = await getCurrentTimestamp();
-      await em.connect(owner).createPoll("ACL2", admin.address, now + 10, 1000, true, true);
+      await em.connect(owner).createPoll("ACL2", admin.address, now + 10, 1000, true, true, ethers.ZeroAddress, ethers.ZeroAddress);
       const pollId = bnToNumber(await em.pollsCount());
 
       await expect(em.connect(attacker).burnTokenForCommit(pollId, alice.address))
@@ -573,7 +573,7 @@ describe("Trust Features", function () {
 
     beforeEach(async function () {
       const now = await getCurrentTimestamp();
-      await em.connect(owner).createPoll("TokenSecret", admin.address, now + 60, 1000, true, true);
+      await em.connect(owner).createPoll("TokenSecret", admin.address, now + 60, 1000, true, true, ethers.ZeroAddress, ethers.ZeroAddress);
       pollId = bnToNumber(await em.pollsCount());
       await em.connect(admin).addOptionToPoll(pollId, "T1");
       await em.connect(admin).addOptionToPoll(pollId, "T2");
@@ -651,7 +651,7 @@ describe("Trust Features", function () {
   describe("Non-Secret Ballot: Commit Rejection", function () {
     it("should reject commit on non-secret ballot poll", async function () {
       const now = await getCurrentTimestamp();
-      await em.connect(owner).createPoll("NormalPoll", admin.address, now + 60, 1000, false, false);
+      await em.connect(owner).createPoll("NormalPoll", admin.address, now + 60, 1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
       const pollId = bnToNumber(await em.pollsCount());
       await em.connect(admin).addOptionToPoll(pollId, "X");
       await em.connect(admin).addVoter(pollId, alice.address);

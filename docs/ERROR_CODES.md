@@ -604,10 +604,28 @@ npx hardhat test
 - **Frontend Action**: Display required fee amount
 - **HTTP Status**: 402
 
-### `"Active franchise exists"`
-- **When**: Granting a franchise to an address that already has an active one
-- **Frontend Action**: Display "This address already has an active franchise"
-- **HTTP Status**: 409
+### `"Active franchise exists"` — *REMOVED*
+- **Behavior Change**: Re-granting to an address with an active franchise now **supersedes** the old one instead of reverting. Old polls remain on ElectionsManager. Emits `FranchiseSuperseded`.
+
+### `"Franchise does not exist"`
+- **When**: Calling `addPolls` with an invalid franchise ID
+- **Frontend Action**: Display "Franchise not found"
+- **HTTP Status**: 404
+
+### `"Franchise exhausted"`
+- **When**: Calling `addPolls` on a franchise that has used all its polls
+- **Frontend Action**: Display "Franchise has no remaining polls — consider granting a new one"
+- **HTTP Status**: 403
+
+### `"Must add > 0"`
+- **When**: Calling `addPolls` with 0 additional polls
+- **Frontend Action**: Display "Must add at least 1 poll"
+- **HTTP Status**: 400
+
+### `"Exceeds 100 poll cap"`
+- **When**: `addPolls` would push total maxPolls above 100
+- **Frontend Action**: Display "Cannot exceed 100 polls — current max is X"
+- **HTTP Status**: 400
 
 ### `"Owner cannot be franchisee"`
 - **When**: Trying to grant a franchise to the contract owner
@@ -656,4 +674,4 @@ npx hardhat test
 
 ---
 
-*Last Updated: v4.1 - 381 Tests Passing*
+*Last Updated: v4.1 - 396 Tests Passing*

@@ -12,8 +12,12 @@ interface IElectionsManager {
         uint startTime,
         uint durationSeconds,
         bool enableTokenVoting,
-        bool requireTokenVoting
+        bool requireTokenVoting,
+        address customTokenManager,
+        address customVotingPaymaster
     ) external returns (uint);
+
+    function changePollAdmin(uint pollId, address newAdmin) external;
 }
 
 /**
@@ -23,10 +27,13 @@ interface IElectionsManager {
  *
  *      RULES:
  *      - Owner grants franchises with: time limit, max polls (≤100), fee per poll
+ *      - Owner can add more polls to an active franchise (up to 100 cap)
+ *      - Owner can grant a NEW franchise to the same address (supersedes the old one)
+ *        — polls created under the old franchise remain on ElectionsManager
  *      - First election is free; subsequent elections cost the per-poll fee in ETH
  *      - Once granted, a franchise CANNOT be revoked — it ends only when:
- *          (a) the time limit expires, OR (b) all polls are used
- *      - No time extensions or poll count increases are ever allowed
+ *          (a) the time limit expires, OR (b) all polls are used, OR (c) it is superseded
+ *      - No time extensions are ever allowed
  *      - Franchisee can transfer their franchise to another address, but must:
  *          (a) pay the transfer fee in ETH, AND (b) get owner approval
  *      - Franchisees cannot create sub-franchises
@@ -43,6 +50,8 @@ contract FranchiseManager {
         uint256 maxPolls;
         uint256 pollsUsed;
         uint256 feePerPoll; // wei — charged from the 2nd poll onward
+        address tokenManager;
+        address votingPaymaster;
     }
 
     struct TransferRequest {
@@ -55,6 +64,9 @@ contract FranchiseManager {
     mapping(uint256 => Franchise) public franchises;
     mapping(uint256 => TransferRequest) public transferRequests;
     mapping(address => uint256) public franchiseeToId; // 0 = no active franchise
+
+    // Track poll IDs created by each franchise for admin transfer on ownership change
+    mapping(uint256 => uint256[]) public franchisePollIds;
 
     uint256 public transferFee; // ETH required to request a transfer
 
@@ -85,6 +97,16 @@ contract FranchiseManager {
     event TransferRejected(uint256 indexed franchiseId);
     event TransferFeeSet(uint256 fee);
     event FeesWithdrawn(address indexed to, uint256 amount);
+    event PollsAdded(
+        uint256 indexed franchiseId,
+        uint256 additionalPolls,
+        uint256 newMaxPolls
+    );
+    event FranchiseSuperseded(
+        uint256 indexed oldFranchiseId,
+        uint256 indexed newFranchiseId,
+        address indexed franchisee
+    );
 
     // ── Modifiers ────────────────────────────────────────────────
     modifier onlyOwner() {
@@ -115,35 +137,36 @@ contract FranchiseManager {
         address franchisee,
         uint256 durationSeconds,
         uint256 maxPolls,
-        uint256 feePerPoll
+        uint256 feePerPoll,
+        address tokenManager,
+        address votingPaymaster
     ) external onlyOwner returns (uint256) {
         require(franchisee != address(0), "Invalid address");
         require(franchisee != owner, "Owner cannot be franchisee");
         require(durationSeconds > 0, "Duration must be > 0");
         require(maxPolls > 0 && maxPolls <= 100, "Polls: 1-100");
 
-        // Allow re-granting only if previous franchise is expired or exhausted
+        // Allow re-granting: supersedes any existing franchise.
+        // Polls created under the old franchise remain on ElectionsManager.
         uint256 existingId = franchiseeToId[franchisee];
-        if (existingId != 0) {
-            Franchise storage existing = franchises[existingId];
-            require(
-                block.timestamp >= existing.expiresAt ||
-                    existing.pollsUsed >= existing.maxPolls,
-                "Active franchise exists"
-            );
-            // Clear old mapping
-            franchiseeToId[franchisee] = 0;
-        }
 
         franchiseCount++;
         uint256 fid = franchiseCount;
+
+        // Clear old mapping (old franchise record stays for history)
+        if (existingId != 0) {
+            franchiseeToId[franchisee] = 0;
+            emit FranchiseSuperseded(existingId, fid, franchisee);
+        }
 
         franchises[fid] = Franchise({
             franchisee: franchisee,
             expiresAt: block.timestamp + durationSeconds,
             maxPolls: maxPolls,
             pollsUsed: 0,
-            feePerPoll: feePerPoll
+            feePerPoll: feePerPoll,
+            tokenManager: tokenManager,
+            votingPaymaster: votingPaymaster
         });
 
         franchiseeToId[franchisee] = fid;
@@ -156,6 +179,27 @@ contract FranchiseManager {
             feePerPoll
         );
         return fid;
+    }
+
+    /**
+     * @notice Add more polls to an existing active franchise
+     * @dev Owner-only. Total maxPolls cannot exceed 100.
+     *      Only works on active (not expired / not exhausted) franchises.
+     * @param franchiseId ID of the franchise to extend
+     * @param additionalPolls Number of extra polls to add
+     */
+    function addPolls(
+        uint256 franchiseId,
+        uint256 additionalPolls
+    ) external onlyOwner {
+        Franchise storage f = franchises[franchiseId];
+        require(f.franchisee != address(0), "Franchise does not exist");
+        require(block.timestamp < f.expiresAt, "Franchise expired");
+        require(additionalPolls > 0, "Must add > 0");
+        require(f.maxPolls + additionalPolls <= 100, "Exceeds 100 poll cap");
+
+        f.maxPolls += additionalPolls;
+        emit PollsAdded(franchiseId, additionalPolls, f.maxPolls);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -200,10 +244,15 @@ contract FranchiseManager {
             startTime,
             durationSeconds,
             enableTokenVoting,
-            requireTokenVoting
+            requireTokenVoting,
+            f.tokenManager,
+            f.votingPaymaster
         );
 
         emit FranchisePollCreated(fid, pollId, msg.value);
+
+        // Track poll ID for franchise transfer
+        franchisePollIds[fid].push(pollId);
 
         // Refund excess ETH
         if (msg.value > fee) {
@@ -284,6 +333,12 @@ contract FranchiseManager {
 
         // Clear request
         delete transferRequests[franchiseId];
+
+        // Transfer admin of all polls created under this franchise
+        uint256[] storage pollIds = franchisePollIds[franchiseId];
+        for (uint256 i = 0; i < pollIds.length; i++) {
+            try electionsManager.changePollAdmin(pollIds[i], newFranchisee) {} catch {}
+        }
 
         emit TransferApproved(franchiseId, oldFranchisee, newFranchisee);
     }
@@ -400,6 +455,17 @@ contract FranchiseManager {
         uint256 franchiseId
     ) external view returns (bool) {
         return !_isFranchiseInactive(franchiseId);
+    }
+
+    /**
+     * @notice Get all poll IDs created under a franchise
+     * @param franchiseId ID of the franchise
+     * @return Array of poll IDs
+     */
+    function getFranchisePollIds(
+        uint256 franchiseId
+    ) external view returns (uint256[] memory) {
+        return franchisePollIds[franchiseId];
     }
 
     // ── Internal ─────────────────────────────────────────────────

@@ -63,7 +63,9 @@ describe("ElectionsManager - Token Integration", function () {
         now + 10,
         1000,
         true,  // enableTokenVoting
-        false  // requireTokenVoting
+        false,  // requireTokenVoting
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
       await tx.wait();
 
@@ -86,7 +88,9 @@ describe("ElectionsManager - Token Integration", function () {
         now + 10,
         1000,
         true,  // enableTokenVoting
-        true   // requireTokenVoting
+        true,   // requireTokenVoting
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       const pollId = bnToNumber(await electionsManager.pollsCount());
@@ -104,7 +108,9 @@ describe("ElectionsManager - Token Integration", function () {
         now + 10,
         1000,
         false, // enableTokenVoting
-        false  // requireTokenVoting
+        false,  // requireTokenVoting
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       const pollId = bnToNumber(await electionsManager.pollsCount());
@@ -130,7 +136,9 @@ describe("ElectionsManager - Token Integration", function () {
         now + 10,
         1000,
         true,
-        false
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
       pollId = bnToNumber(await electionsManager.pollsCount());
 
@@ -162,7 +170,9 @@ describe("ElectionsManager - Token Integration", function () {
         now + 10,
         1000,
         false,
-        false
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
       const nonTokenPollId = bnToNumber(await electionsManager.pollsCount());
 
@@ -187,7 +197,9 @@ describe("ElectionsManager - Token Integration", function () {
         now + 10,
         1000,
         true,  // Token voting enabled
-        false  // But not required
+        false,  // But not required
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
       pollId = bnToNumber(await electionsManager.pollsCount());
 
@@ -220,7 +232,9 @@ describe("ElectionsManager - Token Integration", function () {
         now + 10,
         1000,
         true,
-        true // Token required
+        true, // Token required
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
       const tokenOnlyPollId = bnToNumber(await electionsManager.pollsCount());
 
@@ -247,7 +261,9 @@ describe("ElectionsManager - Token Integration", function () {
         now + 10,
         1000,
         true,
-        false
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
       pollId = bnToNumber(await electionsManager.pollsCount());
 
@@ -301,7 +317,9 @@ describe("ElectionsManager - Token Integration", function () {
         now + 10,
         1000,
         false,
-        false
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
       const noTokenPollId = bnToNumber(await electionsManager.pollsCount());
 
@@ -328,7 +346,9 @@ describe("ElectionsManager - Token Integration", function () {
         now + 10,
         1000,
         true,
-        false
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
       pollId = bnToNumber(await electionsManager.pollsCount());
 
@@ -379,7 +399,9 @@ describe("ElectionsManager - Token Integration", function () {
         now + 10,
         1000,
         false,
-        false
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       const pollId = bnToNumber(await electionsManager.pollsCount());
@@ -398,7 +420,9 @@ describe("ElectionsManager - Token Integration", function () {
         now + 10,
         1000,
         false,
-        false
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
 
       const pollId = bnToNumber(await electionsManager.pollsCount());
@@ -426,7 +450,9 @@ describe("ElectionsManager - Token Integration", function () {
         now + 10,
         1000,
         true,
-        false
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
       const pollId = bnToNumber(await electionsManager.pollsCount());
 
@@ -444,7 +470,9 @@ describe("ElectionsManager - Token Integration", function () {
         now + 10,
         1000,
         true,
-        false
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
       );
       const pollId = bnToNumber(await electionsManager.pollsCount());
 
