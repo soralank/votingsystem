@@ -63,12 +63,18 @@ const GaslessVotingModule = buildModule("GaslessVotingModule", (m) => {
   // 10. Fund the paymaster with initial ETH to cover gas costs
   m.call(votingPaymaster, "fund", [], { value: initialFunding });
 
+  // 11. Deploy VotingReader (read-only helper for frontend queries)
+  //     Provides: isQuadraticVotingEnabled, getPollMaxChoices, isDelegated,
+  //     getPollFeatures, getVoterStatus, and other aggregated view calls
+  const votingReader = m.contract("VotingReader", [electionsManager]);
+
   return {
     electionsManager,
     tokenManager,
     votingPaymaster,
     secretBallotManager,
     franchiseManager,
+    votingReader,
   };
 });
 

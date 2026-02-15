@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: ANKIT.SORAL
+// SPDX-License-Identifier: LicenseRef-ANKIT-SORAL
 pragma solidity ^0.8.20;
 
 /**
@@ -18,6 +18,14 @@ interface IElectionsManager {
     ) external returns (uint);
 
     function changePollAdmin(uint pollId, address newAdmin) external;
+}
+
+/**
+ * @title IVotingPaymasterAdmin
+ * @notice Minimal interface to verify paymaster admin for consent checks
+ */
+interface IVotingPaymasterAdmin {
+    function admin() external view returns (address);
 }
 
 /**
@@ -70,6 +78,9 @@ contract FranchiseManager {
 
     uint256 public transferFee; // ETH required to request a transfer
 
+    // SECURITY (H-5): Track pending refund amounts to prevent owner draining them
+    uint256 public pendingRefunds;
+
     // ── Events ───────────────────────────────────────────────────
     event FranchiseGranted(
         uint256 indexed franchiseId,
@@ -107,6 +118,19 @@ contract FranchiseManager {
         uint256 indexed newFranchiseId,
         address indexed franchisee
     );
+    event PollAdminTransferFailed(uint256 indexed pollId);
+
+    // ── Reentrancy Guard ─────────────────────────────────────
+    uint256 private _reentrancyStatus;
+    uint256 private constant _NOT_ENTERED = 1;
+    uint256 private constant _ENTERED = 2;
+
+    modifier nonReentrant() {
+        require(_reentrancyStatus != _ENTERED, "Reentrant call");
+        _reentrancyStatus = _ENTERED;
+        _;
+        _reentrancyStatus = _NOT_ENTERED;
+    }
 
     // ── Modifiers ────────────────────────────────────────────────
     modifier onlyOwner() {
@@ -119,6 +143,38 @@ contract FranchiseManager {
         require(_electionsManager != address(0), "Invalid address");
         electionsManager = IElectionsManager(_electionsManager);
         owner = msg.sender;
+        _reentrancyStatus = _NOT_ENTERED;
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    //  OWNERSHIP TRANSFER
+    // ══════════════════════════════════════════════════════════════
+
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
+
+    address public pendingOwner;
+
+    /**
+     * @notice Initiate 2-step ownership transfer
+     * @param newOwner Address of the new owner
+     */
+    function transferOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "Invalid address");
+        require(newOwner != owner, "Already owner");
+        pendingOwner = newOwner;
+        emit OwnershipTransferStarted(owner, newOwner);
+    }
+
+    /**
+     * @notice Accept pending ownership transfer
+     */
+    function acceptOwnership() external {
+        require(msg.sender == pendingOwner, "Only pending owner");
+        address prev = owner;
+        owner = pendingOwner;
+        pendingOwner = address(0);
+        emit OwnershipTransferred(prev, owner);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -145,6 +201,15 @@ contract FranchiseManager {
         require(franchisee != owner, "Owner cannot be franchisee");
         require(durationSeconds > 0, "Duration must be > 0");
         require(maxPolls > 0 && maxPolls <= 100, "Polls: 1-100");
+
+        // Security: Verify paymaster admin consents — must be system owner or franchisee
+        if (votingPaymaster != address(0)) {
+            address paymasterAdmin = IVotingPaymasterAdmin(votingPaymaster).admin();
+            require(
+                paymasterAdmin == owner || paymasterAdmin == franchisee,
+                "Paymaster admin must be owner or franchisee"
+            );
+        }
 
         // Allow re-granting: supersedes any existing franchise.
         // Polls created under the old franchise remain on ElectionsManager.
@@ -223,7 +288,7 @@ contract FranchiseManager {
         uint256 durationSeconds,
         bool enableTokenVoting,
         bool requireTokenVoting
-    ) external payable returns (uint256) {
+    ) external payable nonReentrant returns (uint256) {
         uint256 fid = franchiseeToId[msg.sender];
         require(fid != 0, "No franchise");
 
@@ -277,12 +342,13 @@ contract FranchiseManager {
     function requestTransfer(
         uint256 franchiseId,
         address newFranchisee
-    ) external payable {
+    ) external payable nonReentrant {
         Franchise storage f = franchises[franchiseId];
         require(msg.sender == f.franchisee, "Not franchisee");
         require(block.timestamp < f.expiresAt, "Franchise expired");
         require(f.pollsUsed < f.maxPolls, "Franchise exhausted");
         require(newFranchisee != address(0), "Invalid address");
+        require(newFranchisee != msg.sender, "Cannot self-transfer");
         require(newFranchisee != owner, "Owner cannot be franchisee");
         require(
             franchiseeToId[newFranchisee] == 0 ||
@@ -297,6 +363,9 @@ contract FranchiseManager {
             feePaid: msg.value,
             pending: true
         });
+
+        // Track pending refund amount (H-5 fix)
+        pendingRefunds += msg.value;
 
         emit TransferRequested(
             franchiseId,
@@ -318,6 +387,9 @@ contract FranchiseManager {
         address oldFranchisee = f.franchisee;
         address newFranchisee = req.newFranchisee;
 
+        // Release pending refund amount (transfer approved = fee kept)
+        pendingRefunds -= req.feePaid;
+
         // Clear old mapping
         franchiseeToId[oldFranchisee] = 0;
 
@@ -337,7 +409,9 @@ contract FranchiseManager {
         // Transfer admin of all polls created under this franchise
         uint256[] storage pollIds = franchisePollIds[franchiseId];
         for (uint256 i = 0; i < pollIds.length; i++) {
-            try electionsManager.changePollAdmin(pollIds[i], newFranchisee) {} catch {}
+            try electionsManager.changePollAdmin(pollIds[i], newFranchisee) {} catch {
+                emit PollAdminTransferFailed(pollIds[i]);
+            }
         }
 
         emit TransferApproved(franchiseId, oldFranchisee, newFranchisee);
@@ -347,12 +421,15 @@ contract FranchiseManager {
      * @notice Reject a pending franchise transfer and refund the fee
      * @param franchiseId ID of the franchise
      */
-    function rejectTransfer(uint256 franchiseId) external onlyOwner {
+    function rejectTransfer(uint256 franchiseId) external onlyOwner nonReentrant {
         TransferRequest storage req = transferRequests[franchiseId];
         require(req.pending, "No pending transfer");
 
         uint256 refund = req.feePaid;
         address franchisee = franchises[franchiseId].franchisee;
+
+        // Release pending refund tracking before external call
+        pendingRefunds -= refund;
 
         delete transferRequests[franchiseId];
 
@@ -379,14 +456,16 @@ contract FranchiseManager {
     }
 
     /**
-     * @notice Withdraw all accumulated fees (poll fees + transfer fees)
+     * @notice Withdraw accumulated fees only (poll fees + approved transfer fees)
+     * @dev SECURITY (H-5): Excludes pending transfer refunds to prevent stealing deposits
      */
-    function withdrawFees() external onlyOwner {
+    function withdrawFees() external onlyOwner nonReentrant {
         uint256 balance = address(this).balance;
-        require(balance > 0, "No fees");
-        (bool sent, ) = owner.call{value: balance}("");
+        uint256 withdrawable = balance - pendingRefunds;
+        require(withdrawable > 0, "No fees");
+        (bool sent, ) = owner.call{value: withdrawable}("");
         require(sent, "Withdraw failed");
-        emit FeesWithdrawn(owner, balance);
+        emit FeesWithdrawn(owner, withdrawable);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -478,5 +557,15 @@ contract FranchiseManager {
             f.franchisee == address(0) ||
             block.timestamp >= f.expiresAt ||
             f.pollsUsed >= f.maxPolls;
+    }
+
+    // ── Prevent accidental ETH sends ─────────────────────────────
+
+    receive() external payable {
+        revert("Use createFranchisePoll or requestTransfer");
+    }
+
+    fallback() external payable {
+        revert("Unknown function");
     }
 }

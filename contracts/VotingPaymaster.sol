@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: ANKIT.SORAL
+// SPDX-License-Identifier: LicenseRef-ANKIT-SORAL
 pragma solidity ^0.8.20;
 
 import "./TokenManager.sol";
@@ -177,6 +177,13 @@ contract VotingPaymaster {
             abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR, structHash)
         );
 
+        // Reject malleable signatures (EIP-2 / OpenZeppelin ECDSA standard)
+        require(
+            uint256(s) <= 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0,
+            "Invalid s value"
+        );
+        require(v == 27 || v == 28, "Invalid v value");
+
         address recoveredAddress = ecrecover(digest, v, r, s);
         return recoveredAddress == voter && recoveredAddress != address(0);
     }
@@ -201,6 +208,9 @@ contract VotingPaymaster {
     ) external nonReentrant returns (bool) {
         uint256 gasStart = gasleft();
 
+        // L-2: Validate voter address
+        require(voter != address(0), "Invalid voter");
+
         // Enforce relayer whitelist if enabled
         if (relayerWhitelistEnabled) {
             require(trustedRelayers[msg.sender], "Only trusted relayers can execute");
@@ -209,14 +219,13 @@ contract VotingPaymaster {
         // Verify signature
         require(verifySignature(pollId, optionId, voter, deadline, v, r, s), "Invalid signature");
 
-        // Increment nonce (prevent replay)
-        nonces[voter]++;
-
         // Check voter has tokens
         require(tokenManager.hasVoteTokens(pollId, voter), "Insufficient vote tokens");
 
+        // Increment nonce BEFORE external call (CEI pattern, prevents replay)
+        nonces[voter]++;
+
         // Forward call to voting contract (voting contract will burn tokens)
-        // Use low-level call to handle errors gracefully
         (bool success, bytes memory returndata) = votingContract.call{gas: GAS_LIMIT}(
             abi.encodeWithSignature(
                 "voteInPollWithToken(uint256,uint256,address)",

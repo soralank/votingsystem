@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: ANKIT.SORAL
+// SPDX-License-Identifier: LicenseRef-ANKIT-SORAL
 pragma solidity ^0.8.20;
 
 /**
@@ -43,8 +43,13 @@ interface IElectionsManager {
  *          [pollId, optionId, salt, voterAddress]
  *        );
  *        await secretBallotManager.commitVote(pollId, hash);
- *        // ... after voting period ends ...
+ *        // ... after voting period ends (reveal phase) ...
  *        await secretBallotManager.revealVote(pollId, optionId, salt);
+ *
+ *      SECURITY NOTES:
+ *        - optionId is NEVER sent during commit (preserves ballot secrecy)
+ *        - Votes are counted ONLY during reveal (prevents double-counting)
+ *        - Token is burned at commit to prevent double-commit
  */
 contract SecretBallotManager {
     // ── Constants ────────────────────────────────────────────────
@@ -93,6 +98,37 @@ contract SecretBallotManager {
         owner = msg.sender;
     }
 
+    // ── Ownership Transfer ───────────────────────────────────────
+
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
+    event DefaultRevealDurationSet(uint256 oldDuration, uint256 newDuration);
+    event RevealDurationSet(uint indexed pollId, uint256 duration);
+
+    address public pendingOwner;
+
+    /**
+     * @notice Initiate 2-step ownership transfer
+     * @param newOwner Address of the new owner
+     */
+    function transferOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "Invalid address");
+        require(newOwner != owner, "Already owner");
+        pendingOwner = newOwner;
+        emit OwnershipTransferStarted(owner, newOwner);
+    }
+
+    /**
+     * @notice Accept pending ownership transfer
+     */
+    function acceptOwnership() external {
+        require(msg.sender == pendingOwner, "Only pending owner");
+        address prev = owner;
+        owner = pendingOwner;
+        pendingOwner = address(0);
+        emit OwnershipTransferred(prev, owner);
+    }
+
     // ── Reveal Duration Configuration ────────────────────────────
 
     /**
@@ -101,7 +137,9 @@ contract SecretBallotManager {
      */
     function setDefaultRevealDuration(uint duration) external onlyOwnerOrElectionsManager {
         require(duration >= MIN_REVEAL_DURATION, "Reveal duration too short");
+        uint oldDuration = defaultRevealDuration;
         defaultRevealDuration = duration;
+        emit DefaultRevealDurationSet(oldDuration, duration);
     }
 
     /**
@@ -114,6 +152,7 @@ contract SecretBallotManager {
         uint startTime = electionsManager.getPollStartTime(pollId);
         require(block.timestamp < startTime, "Poll already started");
         pollRevealDuration[pollId] = duration;
+        emit RevealDurationSet(pollId, duration);
     }
 
     /**
@@ -129,15 +168,14 @@ contract SecretBallotManager {
     // ── Commit Phase ─────────────────────────────────────────────
 
     /**
-     * @notice Commit a vote (secret ballot - records vote immediately)
+     * @notice Commit a vote hash (secret ballot Phase 1)
      * @dev commitHash = keccak256(abi.encodePacked(pollId, optionId, salt, msg.sender))
-     *      Vote is recorded immediately but hidden from frontend until admin reveals
+     *      Only the hash is stored — the actual vote (optionId) is hidden until reveal.
+     *      SECURITY: optionId is NOT passed during commit to preserve ballot secrecy.
      * @param pollId Poll ID
-     * @param optionId The option being voted for
-     * @param salt Random bytes32 salt for commitment verification
      * @param commitHash The keccak256 commitment hash
      */
-    function commitVote(uint pollId, uint optionId, bytes32 salt, bytes32 commitHash) external {
+    function commitVote(uint pollId, bytes32 commitHash) external {
         _validateCommit(pollId, commitHash);
 
         (,,,,,,,,,, bool tokenVotingRequired) = electionsManager.polls(pollId);
@@ -146,44 +184,28 @@ contract SecretBallotManager {
             revert("Token-required: use commitVoteWithToken().");
         }
 
-        // Verify the commitment hash matches
-        bytes32 expectedHash = keccak256(abi.encodePacked(pollId, optionId, salt, msg.sender));
-        require(commitHash == expectedHash, "Invalid commitment hash");
-
-        uint optionsCount = electionsManager.getOptionsCount(pollId);
-        require(optionId > 0 && optionId <= optionsCount, "Invalid option");
-
         hasCommitted[pollId][msg.sender] = true;
         voteCommitments[pollId][msg.sender] = commitHash;
         commitCount[pollId] += 1;
 
-        // Record the vote immediately in ElectionsManager (no reveal phase needed)
-        electionsManager.recordSecretVote(pollId, msg.sender, optionId, false);
+        // Vote is NOT recorded here — only at reveal (prevents double-counting)
 
         emit VoteCommitted(pollId, msg.sender);
     }
 
     /**
-     * @notice Commit a vote with token burn (secret ballot + token voting)
+     * @notice Commit a vote hash with token burn (secret ballot + token voting)
      * @dev Token is burned at commit time to prevent double-commit.
-     *      Vote is recorded immediately but hidden from frontend until admin reveals
+     *      The actual vote (optionId) is hidden until the reveal phase.
+     *      SECURITY: optionId is NOT passed during commit to preserve ballot secrecy.
      * @param pollId Poll ID
-     * @param optionId The option being voted for
-     * @param salt Random bytes32 salt for commitment verification
      * @param commitHash The keccak256 commitment hash
      */
-    function commitVoteWithToken(uint pollId, uint optionId, bytes32 salt, bytes32 commitHash) external {
+    function commitVoteWithToken(uint pollId, bytes32 commitHash) external {
         _validateCommit(pollId, commitHash);
 
         (,,,,,,,,, bool tokenVotingEnabled,) = electionsManager.polls(pollId);
         require(tokenVotingEnabled, "Token voting not enabled.");
-
-        // Verify the commitment hash matches
-        bytes32 expectedHash = keccak256(abi.encodePacked(pollId, optionId, salt, msg.sender));
-        require(commitHash == expectedHash, "Invalid commitment hash");
-
-        uint optionsCount = electionsManager.getOptionsCount(pollId);
-        require(optionId > 0 && optionId <= optionsCount, "Invalid option");
 
         // Burn token at commit time via ElectionsManager callback
         electionsManager.burnTokenForCommit(pollId, msg.sender);
@@ -192,8 +214,7 @@ contract SecretBallotManager {
         voteCommitments[pollId][msg.sender] = commitHash;
         commitCount[pollId] += 1;
 
-        // Record the vote immediately in ElectionsManager (no reveal phase needed)
-        electionsManager.recordSecretVote(pollId, msg.sender, optionId, true);
+        // Vote is NOT recorded here — only at reveal (prevents double-counting)
 
         emit VoteCommitted(pollId, msg.sender);
     }

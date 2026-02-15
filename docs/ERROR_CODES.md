@@ -17,12 +17,12 @@ This document provides a comprehensive reference of all error codes and messages
 
 ## Poll Management Errors
 
-### `"Poll does not exist."`
+### `"No poll"`
 - **When**: Attempting operations on a non-existent poll ID
 - **Frontend Action**: Display "Poll not found" message, redirect to polls list
 - **HTTP Status**: 404
 
-### `"Poll title already exists."`
+### `"Dup title"`
 - **When**: Creating a poll with a duplicate title
 - **Frontend Action**: Display validation error, suggest alternative title
 - **HTTP Status**: 400
@@ -47,12 +47,12 @@ This document provides a comprehensive reference of all error codes and messages
 - **Frontend Action**: Display "Voting has closed" message with results link
 - **HTTP Status**: 400
 
-### `"Poll not active for voting."`
+### `"Not active"`
 - **When**: Voting outside the active voting period
 - **Frontend Action**: Display poll start time or "Poll has ended" message
 - **HTTP Status**: 400
 
-### `"Maximum options limit reached."`
+### `"Max options"`
 - **When**: Attempting to add more than 100 options
 - **Frontend Action**: Display "Maximum 100 options allowed" message
 - **HTTP Status**: 400
@@ -66,12 +66,12 @@ This document provides a comprehensive reference of all error codes and messages
 
 ## Voter Authorization Errors
 
-### `"Not authorized to vote in this poll."`
+### `"Not voter"`
 - **When**: Unauthorized address attempts to vote
 - **Frontend Action**: Display "You are not authorized to vote in this poll"
 - **HTTP Status**: 403
 
-### `"Voter already authorized."`
+### `"Dup voter"`
 - **When**: Attempting to authorize an already authorized voter
 - **Frontend Action**: Display "Voter is already authorized" message
 - **HTTP Status**: 400
@@ -81,12 +81,12 @@ This document provides a comprehensive reference of all error codes and messages
 - **Frontend Action**: Display "Voter is not in the authorized list" message
 - **HTTP Status**: 404
 
-### `"Invalid voter address."`
+### `"Bad addr"`
 - **When**: Providing zero address or invalid address for voter
 - **Frontend Action**: Display "Invalid wallet address" validation error
 - **HTTP Status**: 400
 
-### `"Batch size exceeds maximum limit."`
+### `"Batch limit"`
 - **When**: Trying to add more than 50 voters at once
 - **Frontend Action**: Display "Maximum 50 voters per batch, split into multiple transactions"
 - **HTTP Status**: 400
@@ -100,7 +100,7 @@ This document provides a comprehensive reference of all error codes and messages
 
 ## Voting Errors
 
-### `"You have already voted."`
+### `"Already voted"`
 - **When**: Attempting to vote twice (traditional voting)
 - **Frontend Action**: Display "You have already voted in this poll" with option to view results
 - **HTTP Status**: 400
@@ -247,7 +247,7 @@ This document provides a comprehensive reference of all error codes and messages
 - **Frontend Action**: Same as above
 - **HTTP Status**: 403
 
-### `"Only poll admin or owner allowed."`
+### `"Admin only"`
 - **When**: Non-admin/owner attempts admin functions on a poll
 - **Frontend Action**: Display "Only poll admin or contract owner can perform this action"
 - **HTTP Status**: 403
@@ -355,7 +355,7 @@ This document provides a comprehensive reference of all error codes and messages
 - **Frontend Action**: Display "Data validation error, please try again"
 - **HTTP Status**: 400
 
-### `"Results not revealed."`
+### `"Not revealed"`
 - **When**: Accessing vote details before results revealed
 - **Frontend Action**: Display "Results will be available after reveal"
 - **HTTP Status**: 403
@@ -383,7 +383,7 @@ This document provides a comprehensive reference of all error codes and messages
 
 ### Secret Ballot Errors (ElectionsManager)
 
-#### `"Secret ballot enabled. Use commitVote()."`
+#### `"Secret poll"`
 - **When**: Attempting plain vote/token vote on a secret ballot poll
 - **Frontend Action**: Display "This is a secret ballot poll. Use the commit-reveal workflow instead."
 - **HTTP Status**: 400
@@ -482,7 +482,7 @@ This document provides a comprehensive reference of all error codes and messages
 
 ### Metadata Lock Errors
 
-#### `"Poll already started."`
+#### `"Poll started"`
 - **When**: Attempting `setPollMetadata()`, `enableSecretBallot()`, or `enableQuadraticVoting()` after poll has started
 - **Frontend Action**: Display "This setting can only be changed before the poll starts"
 - **HTTP Status**: 400
@@ -514,7 +514,7 @@ async function handleVoteError(error: any) {
       message: "You don't have voting tokens for this poll. Please contact the poll administrator.",
       action: "Contact Admin"
     },
-    "Poll not active for voting.": {
+    "Not active": {
       title: "Poll Not Active",
       message: "This poll is not currently accepting votes.",
       action: "View Poll Details"
@@ -556,12 +556,12 @@ function categorizeError(errorMessage: string): ErrorSeverity {
 Errors that can be retried:
 - `"Signature expired"`
 - `"Invalid signature"`
-- `"Poll not active for voting."` (can wait and retry)
+- `"Not active"` (can wait and retry)
 
 Errors that cannot be retried:
 - `"Already voted."`
 - `"Poll ended; cannot vote."`
-- `"Not authorized to vote in this poll."`
+- `"Not voter"`
 - `"Insufficient tokens"`
 
 ---

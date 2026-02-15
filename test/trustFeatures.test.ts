@@ -106,6 +106,115 @@ describe("Trust Features", function () {
       await expect(em.connect(attacker).lockInfrastructure())
         .to.be.revertedWith("Only owner can call");
     });
+
+    it("should prevent changing SecretBallotManager after lock (H-1)", async function () {
+      const now = await getCurrentTimestamp();
+      await em.connect(owner).createPoll("LockSBM", admin.address, now + 10, 1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
+
+      const SBM2 = await ethers.getContractFactory("SecretBallotManager");
+      const sbm2 = await SBM2.deploy(em.target);
+      await expect(em.connect(owner).setSecretBallotManager(sbm2.target))
+        .to.be.revertedWith("Infra locked");
+    });
+
+    it("should prevent changing FranchiseManager after lock (H-2)", async function () {
+      const now = await getCurrentTimestamp();
+      await em.connect(owner).createPoll("LockFM", admin.address, now + 10, 1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
+
+      const FM = await ethers.getContractFactory("FranchiseManager");
+      const fm = await FM.deploy(em.target);
+      await expect(em.connect(owner).setFranchiseManager(fm.target))
+        .to.be.revertedWith("Infra locked");
+    });
+  });
+
+  // ── Paymaster Consent (Anti-Unauthorized Sponsorship) ────────
+
+  describe("Paymaster Consent", function () {
+    it("should revert createPoll with third-party paymaster", async function () {
+      const VotingPaymaster = await ethers.getContractFactory("VotingPaymaster");
+      const thirdPartyPM = await VotingPaymaster.deploy(
+        em.target,
+        tokenManager.target,
+        attacker.address // admin is attacker — not owner or poll admin
+      );
+
+      const now = await getCurrentTimestamp();
+      await expect(
+        em.connect(owner).createPoll(
+          "Unauthorized PM",
+          admin.address,
+          now + 60,
+          600,
+          false,
+          false,
+          ethers.ZeroAddress,
+          thirdPartyPM.target
+        )
+      ).to.be.revertedWith("Bad paymaster");
+    });
+
+    it("should allow createPoll with owner-administered paymaster", async function () {
+      const VotingPaymaster = await ethers.getContractFactory("VotingPaymaster");
+      const ownerPM = await VotingPaymaster.deploy(
+        em.target,
+        tokenManager.target,
+        owner.address // admin is the system owner
+      );
+
+      const now = await getCurrentTimestamp();
+      await em.connect(owner).createPoll(
+        "Owner PM",
+        admin.address,
+        now + 60,
+        600,
+        false,
+        false,
+        ethers.ZeroAddress,
+        ownerPM.target
+      );
+
+      expect(bnToNumber(await em.pollsCount())).to.equal(1);
+    });
+
+    it("should allow createPoll with poll-admin-administered paymaster", async function () {
+      const VotingPaymaster = await ethers.getContractFactory("VotingPaymaster");
+      const adminPM = await VotingPaymaster.deploy(
+        em.target,
+        tokenManager.target,
+        admin.address // admin is the poll admin
+      );
+
+      const now = await getCurrentTimestamp();
+      await em.connect(owner).createPoll(
+        "Admin PM",
+        admin.address,
+        now + 60,
+        600,
+        false,
+        false,
+        ethers.ZeroAddress,
+        adminPM.target
+      );
+
+      expect(bnToNumber(await em.pollsCount())).to.equal(1);
+    });
+
+    it("should allow createPoll with zero-address paymaster (default)", async function () {
+      const now = await getCurrentTimestamp();
+      await em.connect(owner).createPoll(
+        "No Custom PM",
+        admin.address,
+        now + 60,
+        600,
+        false,
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
+      );
+
+      expect(bnToNumber(await em.pollsCount())).to.equal(1);
+    });
   });
 
   // ── Democratic Reveal (Anti-Suppression) ─────────────────────
@@ -228,7 +337,7 @@ describe("Trust Features", function () {
       await ethers.provider.send("evm_mine", []);
 
       await expect(em.connect(alice).voteInPoll(pollId, 1))
-        .to.be.revertedWith("Secret ballot enabled. Use commitVote().");
+        .to.be.revertedWith("Secret poll");
     });
 
     it("should prevent enableSecretBallot after poll starts", async function () {
@@ -241,7 +350,7 @@ describe("Trust Features", function () {
       await ethers.provider.send("evm_mine", []);
 
       await expect(em.connect(admin).enableSecretBallot(pid2))
-        .to.be.revertedWith("Poll already started.");
+        .to.be.revertedWith("Poll started");
     });
 
     it("should prevent double enableSecretBallot", async function () {
@@ -667,6 +776,144 @@ describe("Trust Features", function () {
 
       await expect(sbm.connect(alice).commitVote(pollId, hash))
         .to.be.revertedWith("Secret ballot not enabled.");
+    });
+  });
+
+  // ── Medium/Low Security Fixes ────────────────────────────────
+
+  describe("CEI Pattern (M-3/M-10)", function () {
+    it("voteInPollWithToken should update state before external burn", async function () {
+      const now = await getCurrentTimestamp();
+      const pollId = await em.createPoll(
+        "CEI Token Poll", admin.address, now + 10, 600, true, false,
+        ethers.ZeroAddress, ethers.ZeroAddress
+      ).then((tx: any) => tx.wait()).then(() => em.pollsCount());
+
+      await em.connect(admin).addOptionToPoll(pollId, "A");
+      await em.connect(admin).addVotersWithTokens(pollId, [alice.address], 5);
+
+      await ethers.provider.send("evm_setNextBlockTimestamp", [now + 20]);
+      await ethers.provider.send("evm_mine", []);
+
+      // Vote should succeed — state updates before external call
+      await em.connect(alice).voteInPollWithToken(pollId, 1, alice.address);
+      expect(await em.hasVoterVoted(pollId, alice.address)).to.be.true;
+    });
+  });
+
+  describe("addVotersWithTokens Validation (M-4)", function () {
+    it("should revert when tokensPerVoter is 0", async function () {
+      const now = await getCurrentTimestamp();
+      const pollId = await em.createPoll(
+        "Zero Token Poll", admin.address, now + 100, 600, true, false,
+        ethers.ZeroAddress, ethers.ZeroAddress
+      ).then((tx: any) => tx.wait()).then(() => em.pollsCount());
+
+      await expect(
+        em.connect(admin).addVotersWithTokens(pollId, [alice.address], 0)
+      ).to.be.revertedWith("Zero tokens");
+    });
+  });
+
+  describe("changePollAdmin No-op Guard (L-1)", function () {
+    it("should revert when setting same admin", async function () {
+      const now = await getCurrentTimestamp();
+      const pollId = await em.createPoll(
+        "Same Admin Poll", admin.address, now + 100, 600, false, false,
+        ethers.ZeroAddress, ethers.ZeroAddress
+      ).then((tx: any) => tx.wait()).then(() => em.pollsCount());
+
+      await expect(
+        em.connect(admin).changePollAdmin(pollId, admin.address)
+      ).to.be.revertedWith("Same admin");
+    });
+  });
+
+  describe("Ownership Transfer (M-9)", function () {
+    it("SecretBallotManager should allow 2-step owner transfer", async function () {
+      await sbm.transferOwnership(alice.address);
+      // Not transferred yet — need acceptance
+      expect(await sbm.owner()).to.equal(owner.address);
+      expect(await sbm.pendingOwner()).to.equal(alice.address);
+      await sbm.connect(alice).acceptOwnership();
+      expect(await sbm.owner()).to.equal(alice.address);
+    });
+
+    it("SecretBallotManager should reject zero address transfer", async function () {
+      await expect(
+        sbm.transferOwnership(ethers.ZeroAddress)
+      ).to.be.revertedWith("Invalid address");
+    });
+
+    it("SecretBallotManager should reject transfer to same owner", async function () {
+      await expect(
+        sbm.transferOwnership(owner.address)
+      ).to.be.revertedWith("Already owner");
+    });
+
+    it("SecretBallotManager should reject non-owner transfer", async function () {
+      await expect(
+        sbm.connect(alice).transferOwnership(bob.address)
+      ).to.be.revertedWith("Only owner");
+    });
+
+    it("SecretBallotManager should reject non-pending acceptOwnership", async function () {
+      await sbm.transferOwnership(alice.address);
+      await expect(
+        sbm.connect(bob).acceptOwnership()
+      ).to.be.revertedWith("Only pending owner");
+    });
+  });
+
+  // ── Event Emissions (Production-level audit trail) ────────────
+
+  describe("Event Emissions - New Fixes", function () {
+    it("should emit DefaultRevealDurationSet on SBM config change", async function () {
+      const tx = await sbm.setDefaultRevealDuration(120);
+      await expect(tx)
+        .to.emit(sbm, "DefaultRevealDurationSet")
+        .withArgs(3600, 120); // default 1 hour (3600s) → 120s
+    });
+
+    it("should emit RevealDurationSet on per-poll config change", async function () {
+      const now = await getCurrentTimestamp();
+      const pollId = await em.createPoll(
+        "Reveal Duration Poll", admin.address, now + 200, 600, false, false,
+        ethers.ZeroAddress, ethers.ZeroAddress
+      ).then((tx: any) => tx.wait()).then(() => em.pollsCount());
+
+      const tx = await sbm.setRevealDuration(pollId, 300);
+      await expect(tx)
+        .to.emit(sbm, "RevealDurationSet")
+        .withArgs(pollId, 300);
+    });
+
+    it("should emit OwnershipTransferCancelled on cancel", async function () {
+      await em.transferOwnership(alice.address);
+      const tx = await em.cancelOwnershipTransfer();
+      await expect(tx)
+        .to.emit(em, "OwnershipTransferCancelled")
+        .withArgs(owner.address);
+    });
+
+    it("should emit PollAdminChanged on changePollAdmin", async function () {
+      const now = await getCurrentTimestamp();
+      const pollId = await em.createPoll(
+        "Admin Change Poll", admin.address, now + 200, 600, false, false,
+        ethers.ZeroAddress, ethers.ZeroAddress
+      ).then((tx: any) => tx.wait()).then(() => em.pollsCount());
+
+      const tx = await em.connect(admin).changePollAdmin(pollId, bob.address);
+      await expect(tx)
+        .to.emit(em, "PollAdminChanged")
+        .withArgs(pollId, admin.address, bob.address);
+    });
+
+    it("should emit OwnershipTransferStarted on SBM ownership transfer", async function () {
+      const tx = await sbm.transferOwnership(alice.address);
+      await expect(tx)
+        .to.emit(sbm, "OwnershipTransferStarted")
+        .withArgs(owner.address, alice.address);
     });
   });
 });

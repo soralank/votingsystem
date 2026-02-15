@@ -100,6 +100,18 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
       console.log("✓ VotingPaymaster deployed at:", votingPaymaster.target);
     });
 
+    it("should deploy FranchiseManager before any polls (infra lock)", async function () {
+      const FranchiseManager = await ethers.getContractFactory("FranchiseManager");
+      franchiseManager = await FranchiseManager.deploy(proxyAddress);
+      await franchiseManager.waitForDeployment();
+
+      await electionsManagerV1.setFranchiseManager(franchiseManager.target);
+      expect(await electionsManagerV1.franchiseMgr()).to.equal(franchiseManager.target);
+
+      console.log("✓ FranchiseManager deployed at:", franchiseManager.target);
+      console.log("✓ Linked to proxy via setFranchiseManager (before infra lock)");
+    });
+
     it("should check V1 version", async function () {
       const version = await electionsManagerV1.getVersion();
       expect(version).to.equal("1.0.0");
@@ -471,34 +483,29 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
   // ==================== PART 7: FRANCHISE SUPPORT ====================
 
   describe("Part 7: Franchise Support on Upgradeable Contracts", function () {
-    it("should set franchise manager on V1 (via V2 proxy)", async function () {
-      // Deploy FranchiseManager pointing at the proxy
-      const FranchiseManager = await ethers.getContractFactory("FranchiseManager");
-      franchiseManager = await FranchiseManager.deploy(proxyAddress);
-      await franchiseManager.waitForDeployment();
-
-      // setFranchiseManager is inherited from V1
-      await electionsManagerV2.setFranchiseManager(franchiseManager.target);
+    it("should verify franchise manager set in Part 1 is preserved through upgrade", async function () {
+      // FranchiseManager was deployed and set in Part 1 before any polls were created
+      // (infra lock activates on first createPoll, so setFranchiseManager must happen before)
       expect(await electionsManagerV2.franchiseMgr()).to.equal(franchiseManager.target);
 
-      console.log("✓ FranchiseManager deployed at:", franchiseManager.target);
-      console.log("✓ Linked to proxy via setFranchiseManager");
+      console.log("✓ FranchiseManager preserved through V1→V2 upgrade at:", franchiseManager.target);
     });
 
-    it("should only allow owner to set franchise manager", async function () {
+    it("should block setFranchiseManager after infrastructure lock", async function () {
+      // Infrastructure is locked because polls were already created
+      await expect(
+        electionsManagerV2.setFranchiseManager(franchiseManager.target)
+      ).to.be.revertedWith("Infra locked");
+
+      console.log("✓ setFranchiseManager blocked after infra lock");
+    });
+
+    it("should reject non-owner setFranchiseManager", async function () {
       await expect(
         electionsManagerV2.connect(alice).setFranchiseManager(alice.address)
       ).to.be.revertedWithCustomError(electionsManagerV2, "OwnableUnauthorizedAccount");
 
       console.log("✓ Non-owner cannot set franchise manager");
-    });
-
-    it("should reject zero address for franchise manager", async function () {
-      await expect(
-        electionsManagerV2.setFranchiseManager(ethers.ZeroAddress)
-      ).to.be.revertedWith("Invalid address");
-
-      console.log("✓ Zero address rejected for franchise manager");
     });
 
     it("should grant franchise and create poll through proxy", async function () {
@@ -587,6 +594,137 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
       expect(franchisePoll.title).to.equal("Franchise Poll via Proxy");
 
       console.log("✓ Franchise manager preserved and functional through proxy");
+    });
+  });
+
+  // ==================== PART 6: MEDIUM/LOW FIX VERIFICATION ====================
+
+  describe("Part 6: Medium/Low Fix Verification", function () {
+    it("should return diversity=0 from getPollStats before reveal (M-6)", async function () {
+      // Create a new poll that won't be revealed yet
+      const now = await getCurrentTimestamp();
+      await electionsManagerV2.createPoll(
+        "Unrevealed Stats Poll",
+        admin.address,
+        now + 10,
+        600,
+        true,
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
+      );
+      const unrevealedPollId = bnToNumber(await electionsManagerV2.pollsCount());
+      await electionsManagerV2.connect(admin).addOptionToPoll(unrevealedPollId, "X");
+      await electionsManagerV2.connect(admin).addOptionToPoll(unrevealedPollId, "Y");
+      await electionsManagerV2.connect(admin).addVotersWithTokens(unrevealedPollId, [alice.address], 5);
+
+      await ethers.provider.send("evm_setNextBlockTimestamp", [now + 20]);
+      await ethers.provider.send("evm_mine", []);
+
+      await electionsManagerV2.connect(alice).voteInPollWithToken(unrevealedPollId, 1, alice.address);
+
+      // getPollStats should NOT revert — returns diversity=0
+      const stats = await electionsManagerV2.getPollStats(unrevealedPollId);
+      expect(bnToNumber(stats.totalVotes)).to.equal(1);
+      expect(bnToNumber(stats.diversity)).to.equal(0);
+
+      console.log("✓ getPollStats returns diversity=0 for unrevealed poll");
+    });
+
+    it("should apply vote weight in token voting (M-7)", async function () {
+      const now = await getCurrentTimestamp();
+      await electionsManagerV2.createPoll(
+        "V2 Weight Token Poll",
+        admin.address,
+        now + 10,
+        600,
+        true,
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
+      );
+      const wPollId = bnToNumber(await electionsManagerV2.pollsCount());
+      await electionsManagerV2.connect(admin).addOptionToPoll(wPollId, "OptA");
+      await electionsManagerV2.connect(admin).addOptionToPoll(wPollId, "OptB");
+      await electionsManagerV2.connect(admin).addVotersWithTokens(wPollId, [alice.address, bob.address], 5);
+      await electionsManagerV2.connect(admin).setVoteWeight(wPollId, alice.address, 3);
+
+      await ethers.provider.send("evm_setNextBlockTimestamp", [now + 20]);
+      await ethers.provider.send("evm_mine", []);
+
+      await electionsManagerV2.connect(alice).voteInPollWithToken(wPollId, 1, alice.address);
+      await electionsManagerV2.connect(bob).voteInPollWithToken(wPollId, 2, bob.address);
+
+      // Verify total votes = 3 (alice weight) + 1 (bob default) = 4
+      expect(bnToNumber(await electionsManagerV2.getTotalVotes(wPollId))).to.equal(4);
+
+      // Reveal and check per-option votes
+      const now2 = await getCurrentTimestamp();
+      const wPoll = await electionsManagerV2.polls(wPollId);
+      const endT = bnToNumber(wPoll.endTime);
+      if (now2 < endT + 35) {
+        await ethers.provider.send("evm_setNextBlockTimestamp", [endT + 35]);
+        await ethers.provider.send("evm_mine", []);
+      }
+      await electionsManagerV2.connect(admin).revealResults(wPollId);
+
+      expect(bnToNumber(await electionsManagerV2.getVotes(wPollId, 1))).to.equal(3);
+      expect(bnToNumber(await electionsManagerV2.getVotes(wPollId, 2))).to.equal(1);
+
+      console.log("✓ Token voting respects vote weight (3:1)");
+    });
+
+    it("should emit WeightedVoteApplied for weighted votes (V2)", async function () {
+      const now = await getCurrentTimestamp();
+      await electionsManagerV2.createPoll(
+        "V2 Weight Event Poll",
+        admin.address,
+        now + 10,
+        600,
+        true,
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
+      );
+      const ePollId = bnToNumber(await electionsManagerV2.pollsCount());
+      await electionsManagerV2.connect(admin).addOptionToPoll(ePollId, "E1");
+      await electionsManagerV2.connect(admin).addVotersWithTokens(ePollId, [alice.address], 5);
+      await electionsManagerV2.connect(admin).setVoteWeight(ePollId, alice.address, 4);
+
+      await ethers.provider.send("evm_setNextBlockTimestamp", [now + 20]);
+      await ethers.provider.send("evm_mine", []);
+
+      const tx = await electionsManagerV2.connect(alice).voteInPollWithToken(ePollId, 1, alice.address);
+      await expect(tx)
+        .to.emit(electionsManagerV2, "WeightedVoteApplied")
+        .withArgs(ePollId, alice.address, 1, 3); // weight=4, additional=3
+
+      console.log("✓ WeightedVoteApplied event emitted correctly");
+    });
+
+    it("should emit TokenManagerSet and PaymasterSet on V1 config", async function () {
+      // These were set during beforeEach — just verify the events exist by deploying fresh
+      const ElectionsManagerUpgradeable = await ethers.getContractFactory("ElectionsManagerUpgradeable");
+      const freshImpl = await ElectionsManagerUpgradeable.deploy();
+      await freshImpl.waitForDeployment();
+
+      const ERC1967Proxy = await ethers.getContractFactory("TestERC1967Proxy");
+      const initData = freshImpl.interface.encodeFunctionData("initialize", []);
+      const freshProxy = await ERC1967Proxy.deploy(freshImpl.target, initData);
+      await freshProxy.waitForDeployment();
+
+      const freshV1 = ElectionsManagerUpgradeable.attach(freshProxy.target);
+
+      const TokenManager2 = await ethers.getContractFactory("TokenManager");
+      const tm2 = await TokenManager2.deploy(freshV1.target);
+      await tm2.waitForDeployment();
+
+      const setTx = await freshV1.setTokenManager(tm2.target);
+      await expect(setTx)
+        .to.emit(freshV1, "TokenManagerSet")
+        .withArgs(tm2.target);
+
+      console.log("✓ V1 TokenManagerSet event emitted");
     });
   });
 

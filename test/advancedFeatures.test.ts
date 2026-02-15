@@ -230,7 +230,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       await voting.connect(alice).voteMultiChoice(pollId, [1, 2]);
       await expect(
         voting.connect(alice).voteMultiChoice(pollId, [1])
-      ).to.be.revertedWith("You have already voted.");
+      ).to.be.revertedWith("Already voted");
     });
 
     it("should require at least 2 for maxChoices", async function () {
@@ -310,7 +310,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       // 3 votes = 9 tokens, but only has 5
       await expect(
         voting.connect(alice).voteQuadratic(pollId, [1], [3])
-      ).to.be.revertedWith("Insufficient tokens for quadratic cost.");
+      ).to.be.revertedWith("Low tokens");
     });
 
     it("should reject quadratic vote when not enabled", async function () {
@@ -377,6 +377,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       await voting.connect(admin).addOptionToPoll(pollId, "A");
       await voting.connect(admin).addOptionToPoll(pollId, "B");
       await voting.connect(admin).addVoters(pollId, [alice.address, bob.address]);
+      await voting.connect(admin).enableDelegation(pollId);
 
       await voting.connect(alice).delegateVote(pollId, bob.address);
 
@@ -395,6 +396,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       await voting.connect(admin).addOptionToPoll(pollId, "A");
       await voting.connect(admin).addOptionToPoll(pollId, "B");
       await voting.connect(admin).addVoters(pollId, [alice.address, bob.address]);
+      await voting.connect(admin).enableDelegation(pollId);
 
       await voting.connect(alice).delegateVote(pollId, bob.address);
 
@@ -421,6 +423,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       const pollId = await createStandardPoll("Delegation Self");
       await voting.connect(admin).addOptionToPoll(pollId, "A");
       await voting.connect(admin).addVoters(pollId, [alice.address]);
+      await voting.connect(admin).enableDelegation(pollId);
 
       await expect(
         voting.connect(alice).delegateVote(pollId, alice.address)
@@ -431,6 +434,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       const pollId = await createStandardPoll("Delegation After Vote");
       await voting.connect(admin).addOptionToPoll(pollId, "A");
       await voting.connect(admin).addVoters(pollId, [alice.address, bob.address]);
+      await voting.connect(admin).enableDelegation(pollId);
 
       const now = await getCurrentTimestamp();
       await ethers.provider.send("evm_setNextBlockTimestamp", [now + 15]);
@@ -440,13 +444,14 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
 
       await expect(
         voting.connect(alice).delegateVote(pollId, bob.address)
-      ).to.be.revertedWith("Already voted; cannot delegate.");
+      ).to.be.revertedWith("Voted already");
     });
 
     it("should prevent delegated voter from voting directly", async function () {
       const pollId = await createStandardPoll("Delegation No Direct Vote");
       await voting.connect(admin).addOptionToPoll(pollId, "A");
       await voting.connect(admin).addVoters(pollId, [alice.address, bob.address]);
+      await voting.connect(admin).enableDelegation(pollId);
 
       await voting.connect(alice).delegateVote(pollId, bob.address);
 
@@ -456,13 +461,14 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
 
       await expect(
         voting.connect(alice).voteInPoll(pollId, 1)
-      ).to.be.revertedWith("You have delegated your vote.");
+      ).to.be.revertedWith("Delegated");
     });
 
     it("should prevent wrong delegate from voting", async function () {
       const pollId = await createStandardPoll("Delegation Wrong Delegate");
       await voting.connect(admin).addOptionToPoll(pollId, "A");
       await voting.connect(admin).addVoters(pollId, [alice.address, bob.address, charlie.address]);
+      await voting.connect(admin).enableDelegation(pollId);
 
       await voting.connect(alice).delegateVote(pollId, bob.address);
 
@@ -479,6 +485,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       const pollId = await createStandardPoll("Delegation Remove");
       await voting.connect(admin).addOptionToPoll(pollId, "A");
       await voting.connect(admin).addVoters(pollId, [alice.address, bob.address]);
+      await voting.connect(admin).enableDelegation(pollId);
 
       await voting.connect(alice).delegateVote(pollId, bob.address);
       await voting.connect(alice).removeDelegation(pollId);
@@ -500,6 +507,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       const pollId = await createStandardPoll("Delegation Double");
       await voting.connect(admin).addOptionToPoll(pollId, "A");
       await voting.connect(admin).addVoters(pollId, [alice.address, bob.address, charlie.address]);
+      await voting.connect(admin).enableDelegation(pollId);
 
       await voting.connect(alice).delegateVote(pollId, bob.address);
       await expect(
@@ -511,6 +519,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       const pollId = await createStandardPoll("Delegation Chain");
       await voting.connect(admin).addOptionToPoll(pollId, "A");
       await voting.connect(admin).addVoters(pollId, [alice.address, bob.address, charlie.address]);
+      await voting.connect(admin).enableDelegation(pollId);
 
       await voting.connect(alice).delegateVote(pollId, bob.address);
 
@@ -533,6 +542,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       await voting.connect(admin).addVoters(pollId, [
         alice.address, bob.address, charlie.address, dave.address
       ]);
+      await voting.connect(admin).enableDelegation(pollId);
 
       // Alice and Charlie both delegate to Dave
       await voting.connect(alice).delegateVote(pollId, dave.address);
@@ -554,6 +564,47 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
 
       expect(bnToNumber(await voting.getTotalVotes(pollId))).to.equal(3);
       console.log("✓ Multiple delegations to Dave, all 3 votes cast");
+    });
+
+    it("should revert delegateVote when delegation not enabled", async function () {
+      const pollId = await createStandardPoll("Delegation Off");
+      await voting.connect(admin).addOptionToPoll(pollId, "A");
+      await voting.connect(admin).addVoters(pollId, [alice.address, bob.address]);
+
+      const now = await getCurrentTimestamp();
+      await ethers.provider.send("evm_setNextBlockTimestamp", [now + 15]);
+      await ethers.provider.send("evm_mine");
+
+      await expect(
+        voting.connect(alice).delegateVote(pollId, bob.address)
+      ).to.be.revertedWith("Delegation off");
+      console.log("✓ delegateVote reverts when delegation not enabled");
+    });
+
+    it("should revert voteAsDelegate when delegation not enabled", async function () {
+      const pollId = await createStandardPoll("Delegation Off Vote");
+      await voting.connect(admin).addOptionToPoll(pollId, "A");
+      await voting.connect(admin).addVoters(pollId, [alice.address, bob.address]);
+
+      const now = await getCurrentTimestamp();
+      await ethers.provider.send("evm_setNextBlockTimestamp", [now + 15]);
+      await ethers.provider.send("evm_mine");
+
+      await expect(
+        voting.connect(bob).voteAsDelegate(pollId, 1, alice.address)
+      ).to.be.revertedWith("Delegation off");
+      console.log("✓ voteAsDelegate reverts when delegation not enabled");
+    });
+
+    it("should emit DelegationEnabled event", async function () {
+      const pollId = await createStandardPoll("Delegation Event");
+      await voting.connect(admin).addOptionToPoll(pollId, "A");
+      await voting.connect(admin).addVoters(pollId, [alice.address]);
+
+      await expect(voting.connect(admin).enableDelegation(pollId))
+        .to.emit(voting, "DelegationEnabled")
+        .withArgs(pollId);
+      console.log("✓ DelegationEnabled event emitted");
     });
   });
 
@@ -596,7 +647,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
 
       await expect(
         voting.connect(attacker).setPollMetadata(pollId, "ipfs://QmTest")
-      ).to.be.revertedWith("Only poll admin or owner allowed.");
+      ).to.be.revertedWith("Admin only");
     });
 
     it("should allow updating metadata", async function () {
@@ -645,6 +696,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       await voting.connect(admin).addOptionToPoll(pollId, "A");
       await voting.connect(admin).addOptionToPoll(pollId, "B");
       await voting.connect(admin).addVoters(pollId, [alice.address, bob.address]);
+      await voting.connect(admin).enableDelegation(pollId);
 
       // Alice delegates to Bob
       await voting.connect(alice).delegateVote(pollId, bob.address);
@@ -658,28 +710,32 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       // But delegation prevents voting anyway
       await expect(
         voting.connect(alice).voteMultiChoice(pollId, [1])
-      ).to.be.revertedWith("You have delegated your vote.");
+      ).to.be.revertedWith("Delegated");
 
       console.log("✓ Delegation blocks multi-choice voting for delegator");
     });
 
-    it("should prevent delegated voter from quadratic voting", async function () {
+    it("should prevent delegation for token-based polls", async function () {
       const pollId = await createStandardPoll("Delegation + Quadratic", { tokenEnabled: true });
       await voting.connect(admin).enableQuadraticVoting(pollId);
       await voting.connect(admin).addOptionToPoll(pollId, "A");
       await voting.connect(admin).addVotersWithTokens(pollId, [alice.address, bob.address], 20);
 
-      await voting.connect(alice).delegateVote(pollId, bob.address);
+      // Cannot enable delegation for token-based polls
+      await expect(
+        voting.connect(admin).enableDelegation(pollId)
+      ).to.be.revertedWith("No delegation");
 
+      // delegateVote also blocked since delegation not enabled
       const now = await getCurrentTimestamp();
       await ethers.provider.send("evm_setNextBlockTimestamp", [now + 15]);
       await ethers.provider.send("evm_mine");
 
       await expect(
-        voting.connect(alice).voteQuadratic(pollId, [1], [2])
-      ).to.be.revertedWith("You have delegated your vote.");
+        voting.connect(alice).delegateVote(pollId, bob.address)
+      ).to.be.revertedWith("Delegation off");
 
-      console.log("✓ Delegation blocks quadratic voting for delegator");
+      console.log("✓ Delegation blocked for token-based polls");
     });
   });
 

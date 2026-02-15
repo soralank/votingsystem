@@ -22,9 +22,11 @@ contract ElectionsManagerUpgradeableV2 is ElectionsManagerUpgradeable {
     event PollPaused(uint indexed pollId);
     event PollUnpaused(uint indexed pollId);
     event VoterCountUpdated(uint indexed pollId, uint count);
+    event UpgradedToV2(string version);
+    event WeightedVoteApplied(uint indexed pollId, address indexed voter, uint optionId, uint additionalVotes);
 
     function initializeV2() public reinitializer(2) {
-        // V2 initialization
+        emit UpgradedToV2(VERSION_V2);
     }
 
     function setPollCategory(uint pollId, string calldata category) external onlyAdminOrOwner(pollId) {
@@ -80,6 +82,24 @@ contract ElectionsManagerUpgradeableV2 is ElectionsManagerUpgradeable {
             uint additionalVotes = weight - 1;
             votesCount[pollId][optionId] += additionalVotes;
             polls[pollId].totalVotes += additionalVotes;
+            emit WeightedVoteApplied(pollId, msg.sender, optionId, additionalVotes);
+        }
+    }
+
+    /**
+     * @notice Override token voting to enforce pause and apply vote weight (M-2/M-7 fix)
+     */
+    function voteInPollWithToken(uint256 pollId, uint256 optionId, address voter) public override {
+        require(!pollPaused[pollId], "Poll is paused");
+        super.voteInPollWithToken(pollId, optionId, voter);
+
+        // Apply vote weight multiplier (same as voteInPoll)
+        uint weight = voteWeight[pollId][voter];
+        if (weight > 1) {
+            uint additionalVotes = weight - 1;
+            votesCount[pollId][optionId] += additionalVotes;
+            polls[pollId].totalVotes += additionalVotes;
+            emit WeightedVoteApplied(pollId, voter, optionId, additionalVotes);
         }
     }
 
@@ -90,11 +110,15 @@ contract ElectionsManagerUpgradeableV2 is ElectionsManagerUpgradeable {
         return (polls[pollId].totalVotes * 100) / totalAuthorized;
     }
 
-    function getVoteDiversity(uint pollId) external view returns (uint diversity) {
+    function getVoteDiversity(uint pollId) public view returns (uint diversity) {
         require(polls[pollId].exists, "Poll does not exist.");
-        require(polls[pollId].revealed || msg.sender == polls[pollId].admin || msg.sender == owner(), "Results not revealed");
+        require(polls[pollId].revealed, "Results not revealed");
+        return _calcDiversity(pollId);
+    }
 
+    function _calcDiversity(uint pollId) internal view returns (uint) {
         if (polls[pollId].totalVotes == 0) return 0;
+        if (polls[pollId].optionsCount == 0) return 0;
 
         uint optionsWithVotes = 0;
         for (uint i = 1; i <= polls[pollId].optionsCount; i++) {
@@ -115,8 +139,14 @@ contract ElectionsManagerUpgradeableV2 is ElectionsManagerUpgradeable {
         require(polls[pollId].exists, "Poll does not exist.");
 
         totalVotes = polls[pollId].totalVotes;
-        participationRate = this.getParticipationRate(pollId);
-        diversity = this.getVoteDiversity(pollId);
+
+        // Participation: safe to call always
+        uint totalAuthorized = authorizedVoterCount[pollId];
+        participationRate = totalAuthorized > 0 ? (totalVotes * 100) / totalAuthorized : 0;
+
+        // Diversity: only available after reveal (0 if not yet revealed)
+        diversity = polls[pollId].revealed ? _calcDiversity(pollId) : 0;
+
         isPaused = pollPaused[pollId];
     }
 

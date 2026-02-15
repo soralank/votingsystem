@@ -265,6 +265,19 @@ describe("Gasless Voting - End-to-End Integration", function () {
       ).to.be.revertedWith("Signature expired");
     });
 
+    it("should reject zero address voter (L-2)", async function () {
+      const nonce = 0;
+      const deadline = (await getCurrentTimestamp()) + 1000;
+      // Craft a signature — won't matter because zero-address check comes first
+      const sig = await signVote(voter1, pollId, 1, nonce, deadline);
+
+      await expect(
+        votingPaymaster
+          .connect(relayer)
+          .executeVoteWithToken(pollId, 1, ethers.ZeroAddress, deadline, sig.v, sig.r, sig.s)
+      ).to.be.revertedWith("Invalid voter");
+    });
+
     it("should prevent voting without tokens via paymaster", async function () {
       // voter2 has no tokens (added in beforeEach without tokens)
       const nonce = bnToNumber(await votingPaymaster.getNonce(voter2.address));

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: ANKIT.SORAL
+// SPDX-License-Identifier: LicenseRef-ANKIT-SORAL
 pragma solidity ^0.8.20;
 
 /**
@@ -19,6 +19,7 @@ contract QuadraticVoting {
     address public electionsManager;
 
     event QuadraticVotingEnabled(uint indexed pollId);
+    event QuadraticVotingDisabled(uint indexed pollId);
     event VotedQuadratic(uint indexed pollId, address indexed voter, uint[] optionIds, uint[] voteAmounts, uint totalCost);
 
     modifier onlyElectionsManager() {
@@ -37,7 +38,11 @@ contract QuadraticVoting {
      */
     function setQuadraticVotingEnabled(uint pollId, bool enabled) external onlyElectionsManager {
         quadraticVotingEnabled[pollId] = enabled;
-        if (enabled) emit QuadraticVotingEnabled(pollId);
+        if (enabled) {
+            emit QuadraticVotingEnabled(pollId);
+        } else {
+            emit QuadraticVotingDisabled(pollId);
+        }
     }
 
     /**

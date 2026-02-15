@@ -53,19 +53,19 @@ describe("Error Codes Verification", function () {
   });
 
   describe("Poll Management Errors - As Documented", function () {
-    it('should throw: "Poll does not exist."', async function () {
+    it('should throw: "No poll"', async function () {
       await expect(
         electionsManager.getOption(999, 1)
-      ).to.be.revertedWith("Poll does not exist.");
+      ).to.be.revertedWith("No poll");
     });
 
-    it('should throw: "Poll title already exists."', async function () {
+    it('should throw: "Dup title"', async function () {
       const now = await getCurrentTimestamp();
       await electionsManager.createPoll("Duplicate Title", admin.address, now + 10, 600, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
 
       await expect(
         electionsManager.createPoll("Duplicate Title", admin.address, now + 10, 600, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
-      ).to.be.revertedWith("Poll title already exists.");
+      ).to.be.revertedWith("Dup title");
     });
 
     it('should throw: "Poll started" (was: cannot add options)', async function () {
@@ -94,10 +94,10 @@ describe("Error Codes Verification", function () {
 
       await expect(
         electionsManager.connect(voter).voteInPoll(pollId, 1)
-      ).to.be.revertedWith("Poll not active for voting.");
+      ).to.be.revertedWith("Not active");
     });
 
-    it('should throw: "Maximum options limit reached."', async function () {
+    it('should throw: "Max options"', async function () {
       const now = await getCurrentTimestamp();
       // Set start time far in future so we have time to add 100 options
       await electionsManager.createPoll("Test Poll", admin.address, now + 3600, 600, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
@@ -110,7 +110,7 @@ describe("Error Codes Verification", function () {
 
       await expect(
         electionsManager.connect(admin).addOptionToPoll(pollId, "Option 101")
-      ).to.be.revertedWith("Maximum options limit reached.");
+      ).to.be.revertedWith("Max options");
     });
   });
 
@@ -124,35 +124,35 @@ describe("Error Codes Verification", function () {
       await electionsManager.connect(admin).addOptionToPoll(pollId, "Option 1");
     });
 
-    it('should throw: "Not authorized to vote in this poll."', async function () {
+    it('should throw: "Not voter"', async function () {
       await ethers.provider.send("evm_setNextBlockTimestamp", [await getCurrentTimestamp() + 20]);
       await ethers.provider.send("evm_mine");
 
       await expect(
         electionsManager.connect(voter).voteInPoll(pollId, 1)
-      ).to.be.revertedWith("Not authorized to vote in this poll.");
+      ).to.be.revertedWith("Not voter");
     });
 
-    it('should throw: "Voter already authorized."', async function () {
+    it('should throw: "Dup voter"', async function () {
       await electionsManager.connect(admin).addVoter(pollId, voter.address);
 
       await expect(
         electionsManager.connect(admin).addVoter(pollId, voter.address)
-      ).to.be.revertedWith("Voter already authorized.");
+      ).to.be.revertedWith("Dup voter");
     });
 
-    it('should throw: "Invalid voter address."', async function () {
+    it('should throw: "Bad addr"', async function () {
       await expect(
         electionsManager.connect(admin).addVoter(pollId, ethers.ZeroAddress)
-      ).to.be.revertedWith("Invalid voter address.");
+      ).to.be.revertedWith("Bad addr");
     });
 
-    it('should throw: "Batch size exceeds maximum limit."', async function () {
+    it('should throw: "Batch limit"', async function () {
       const voters = new Array(51).fill(voter.address);
 
       await expect(
         electionsManager.connect(admin).addVoters(pollId, voters)
-      ).to.be.revertedWith("Batch size exceeds maximum limit.");
+      ).to.be.revertedWith("Batch limit");
     });
   });
 
@@ -170,12 +170,12 @@ describe("Error Codes Verification", function () {
       await ethers.provider.send("evm_mine");
     });
 
-    it('should throw: "You have already voted."', async function () {
+    it('should throw: "Already voted"', async function () {
       await electionsManager.connect(voter).voteInPoll(pollId, 1);
 
       await expect(
         electionsManager.connect(voter).voteInPoll(pollId, 1)
-      ).to.be.revertedWith("You have already voted.");
+      ).to.be.revertedWith("Already voted");
     });
 
     it('should throw: "Invalid option."', async function () {
@@ -271,13 +271,11 @@ describe("Error Codes Verification", function () {
       ).to.be.revertedWith("Voting tokens are non-transferable");
     });
 
-    it('should throw: "Amount must be positive"', async function () {
-      // This error is internal-only (TokenManager.allocateTokens called by voting contract)
-      // The public API (addVotersWithTokens) would fail earlier with different validation
-      // Verification: Test that addVotersWithTokens requires positive amount
+    it('should throw: "Zero tokens"', async function () {
+      // addVotersWithTokens now validates tokensPerVoter > 0 directly
       await expect(
         electionsManager.connect(admin).addVotersWithTokens(pollId, [voter.address], 0)
-      ).to.be.revertedWith("Amount must be positive"); // Will revert during token allocation
+      ).to.be.revertedWith("Zero tokens");
     });
   });
 
@@ -311,14 +309,14 @@ describe("Error Codes Verification", function () {
       ).to.be.revertedWith("Not authorized");
     });
 
-    it('should throw: "Only poll admin or owner allowed."', async function () {
+    it('should throw: "Admin only"', async function () {
       const now = await getCurrentTimestamp();
       await electionsManager.createPoll("Test Poll", admin.address, now + 10, 600, false, false, ethers.ZeroAddress, ethers.ZeroAddress);
       const pollId = bnToNumber(await electionsManager.pollsCount());
 
       await expect(
         electionsManager.connect(attacker).addOptionToPoll(pollId, "Unauthorized Option")
-      ).to.be.revertedWith("Only poll admin or owner allowed.");
+      ).to.be.revertedWith("Admin only");
     });
 
     it('should throw: "Only pending owner can accept"', async function () {
@@ -406,9 +404,9 @@ describe("Error Codes Verification", function () {
       // Frontend should handle both formats
 
       const errorsWithPeriods = [
-        "Poll does not exist.",
+        "No poll",
         "Already voted.",
-        "You have already voted.",
+        "Already voted",
       ];
 
       const errorsWithoutPeriods = [

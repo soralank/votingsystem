@@ -271,6 +271,80 @@ describe("FranchiseManager", function () {
 
       expect(bnToNumber(await franchiseManager.franchiseCount())).to.equal(2);
     });
+
+    it("should revert if paymaster admin is not owner or franchisee", async function () {
+      // Deploy a VotingPaymaster where admin is 'attacker' (a third party)
+      const VotingPaymaster = await ethers.getContractFactory("VotingPaymaster");
+      const thirdPartyPaymaster = await VotingPaymaster.deploy(
+        electionsManager.target,
+        tokenManager.target,
+        attacker.address // admin is attacker, not owner or franchisee
+      );
+
+      await expect(
+        franchiseManager.grantFranchise(
+          franchisee1.address,
+          THIRTY_DAYS,
+          10,
+          FEE_PER_POLL,
+          tokenManager.target,
+          thirdPartyPaymaster.target
+        )
+      ).to.be.revertedWith("Paymaster admin must be owner or franchisee");
+    });
+
+    it("should allow paymaster whose admin is the system owner", async function () {
+      const VotingPaymaster = await ethers.getContractFactory("VotingPaymaster");
+      const ownerPaymaster = await VotingPaymaster.deploy(
+        electionsManager.target,
+        tokenManager.target,
+        owner.address // admin is the system owner
+      );
+
+      await franchiseManager.grantFranchise(
+        franchisee1.address,
+        THIRTY_DAYS,
+        10,
+        FEE_PER_POLL,
+        tokenManager.target,
+        ownerPaymaster.target
+      );
+
+      expect(bnToNumber(await franchiseManager.franchiseCount())).to.equal(1);
+    });
+
+    it("should allow paymaster whose admin is the franchisee", async function () {
+      const VotingPaymaster = await ethers.getContractFactory("VotingPaymaster");
+      const franchiseePaymaster = await VotingPaymaster.deploy(
+        electionsManager.target,
+        tokenManager.target,
+        franchisee1.address // admin is the franchisee
+      );
+
+      await franchiseManager.grantFranchise(
+        franchisee1.address,
+        THIRTY_DAYS,
+        10,
+        FEE_PER_POLL,
+        tokenManager.target,
+        franchiseePaymaster.target
+      );
+
+      expect(bnToNumber(await franchiseManager.franchiseCount())).to.equal(1);
+    });
+
+    it("should allow zero address paymaster (no restriction needed)", async function () {
+      await franchiseManager.grantFranchise(
+        franchisee1.address,
+        THIRTY_DAYS,
+        10,
+        FEE_PER_POLL,
+        tokenManager.target,
+        ethers.ZeroAddress
+      );
+
+      expect(bnToNumber(await franchiseManager.franchiseCount())).to.equal(1);
+    });
   });
 
   // ══════════════════════════════════════════════════════════════
@@ -1420,6 +1494,161 @@ describe("FranchiseManager", function () {
         .withArgs(1, 2, franchisee1.address);
       await expect(tx)
         .to.emit(franchiseManager, "FranchiseGranted");
+    });
+  });
+
+  // ── Ownership Transfer (M-9) ────────────────────────────────
+
+  describe("Ownership Transfer", function () {
+    it("should complete 2-step ownership transfer", async function () {
+      await franchiseManager.transferOwnership(franchisee1.address);
+      // Not transferred yet
+      expect(await franchiseManager.owner()).to.equal(owner.address);
+      expect(await franchiseManager.pendingOwner()).to.equal(franchisee1.address);
+
+      const tx = await franchiseManager.connect(franchisee1).acceptOwnership();
+      await expect(tx)
+        .to.emit(franchiseManager, "OwnershipTransferred")
+        .withArgs(owner.address, franchisee1.address);
+      expect(await franchiseManager.owner()).to.equal(franchisee1.address);
+    });
+
+    it("should reject transfer to zero address", async function () {
+      await expect(
+        franchiseManager.transferOwnership(ethers.ZeroAddress)
+      ).to.be.revertedWith("Invalid address");
+    });
+
+    it("should reject transfer to same owner", async function () {
+      await expect(
+        franchiseManager.transferOwnership(owner.address)
+      ).to.be.revertedWith("Already owner");
+    });
+
+    it("should reject non-owner transfer", async function () {
+      await expect(
+        franchiseManager.connect(attacker).transferOwnership(attacker.address)
+      ).to.be.revertedWith("Only owner");
+    });
+
+    it("should reject non-pending acceptOwnership", async function () {
+      await franchiseManager.transferOwnership(franchisee1.address);
+      await expect(
+        franchiseManager.connect(attacker).acceptOwnership()
+      ).to.be.revertedWith("Only pending owner");
+    });
+
+    it("should emit OwnershipTransferStarted on initiate", async function () {
+      const tx = await franchiseManager.transferOwnership(franchisee1.address);
+      await expect(tx)
+        .to.emit(franchiseManager, "OwnershipTransferStarted")
+        .withArgs(owner.address, franchisee1.address);
+    });
+  });
+
+  // ── Self-Transfer Prevention (L-3) ──────────────────────────
+
+  describe("Self-Transfer Prevention", function () {
+    it("should reject franchise transfer to self", async function () {
+      // Grant franchise to franchisee1
+      await franchiseManager.grantFranchise(
+        franchisee1.address,
+        THIRTY_DAYS,
+        5,
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
+      );
+
+      await expect(
+        franchiseManager.connect(franchisee1).requestTransfer(
+          1,
+          franchisee1.address,
+          { value: TRANSFER_FEE }
+        )
+      ).to.be.revertedWith("Cannot self-transfer");
+    });
+  });
+
+  // ── Receive/Fallback Guards (L-6) ──────────────────────────
+
+  describe("ETH Guard Functions", function () {
+    it("should reject plain ETH transfers via receive()", async function () {
+      await expect(
+        owner.sendTransaction({
+          to: franchiseManager.target,
+          value: ethers.parseEther("0.01"),
+        })
+      ).to.be.revertedWith("Use createFranchisePoll or requestTransfer");
+    });
+
+    it("should reject calls to unknown functions via fallback()", async function () {
+      await expect(
+        owner.sendTransaction({
+          to: franchiseManager.target,
+          value: ethers.parseEther("0.01"),
+          data: "0xdeadbeef",
+        })
+      ).to.be.revertedWith("Unknown function");
+    });
+  });
+
+  // ── Event Emission Verification ─────────────────────────────
+
+  describe("Event Emissions - Franchise Operations", function () {
+    it("should emit OwnershipTransferStarted on ownership transfer initiation", async function () {
+      const tx = await franchiseManager.transferOwnership(franchisee1.address);
+      await expect(tx)
+        .to.emit(franchiseManager, "OwnershipTransferStarted")
+        .withArgs(owner.address, franchisee1.address);
+    });
+
+    it("should emit OwnershipTransferred on ownership acceptance", async function () {
+      await franchiseManager.transferOwnership(franchisee1.address);
+      const tx = await franchiseManager.connect(franchisee1).acceptOwnership();
+      await expect(tx)
+        .to.emit(franchiseManager, "OwnershipTransferred")
+        .withArgs(owner.address, franchisee1.address);
+    });
+
+    it("should emit TransferFeeSet on fee change", async function () {
+      const newFee = ethers.parseEther("0.1");
+      const tx = await franchiseManager.setTransferFee(newFee);
+      await expect(tx)
+        .to.emit(franchiseManager, "TransferFeeSet")
+        .withArgs(newFee);
+    });
+
+    it("should emit FranchiseGranted with all parameters", async function () {
+      const tx = await franchiseManager.grantFranchise(
+        franchisee1.address,
+        THIRTY_DAYS,
+        5,
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
+      );
+      await expect(tx).to.emit(franchiseManager, "FranchiseGranted");
+    });
+
+    it("should emit TransferRequested on franchise transfer request", async function () {
+      await franchiseManager.grantFranchise(
+        franchisee1.address,
+        THIRTY_DAYS,
+        5,
+        FEE_PER_POLL,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
+      );
+
+      const tx = await franchiseManager.connect(franchisee1).requestTransfer(
+        1,
+        franchisee2.address,
+        { value: TRANSFER_FEE }
+      );
+      await expect(tx)
+        .to.emit(franchiseManager, "TransferRequested")
+        .withArgs(1, franchisee1.address, franchisee2.address, TRANSFER_FEE);
     });
   });
 });

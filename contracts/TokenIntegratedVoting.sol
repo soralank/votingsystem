@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: ANKIT.SORAL
+// SPDX-License-Identifier: LicenseRef-ANKIT-SORAL
 pragma solidity ^0.8.20;
 
 import "./TimeValidator.sol";
@@ -17,7 +17,7 @@ contract TokenIntegratedVoting is TimeValidator {
     uint256 private constant _ENTERED = 2;
 
     modifier nonReentrant() {
-        require(_reentrancyStatus != _ENTERED, "ReentrancyGuard: reentrant call");
+        require(_reentrancyStatus != _ENTERED, "Reentrant call");
         _reentrancyStatus = _ENTERED;
         _;
         _reentrancyStatus = _NOT_ENTERED;
@@ -62,6 +62,7 @@ contract TokenIntegratedVoting is TimeValidator {
     event VotedWithToken(uint256 indexed pollId, address indexed voter, uint256 indexed optionId);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
+    event OwnershipTransferCancelled(address indexed owner);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "Only owner can call");
@@ -93,7 +94,7 @@ contract TokenIntegratedVoting is TimeValidator {
      * @param _paymaster Address of VotingPaymaster
      */
     function setVotingPaymaster(address payable _paymaster) external onlyOwner {
-        require(_paymaster != address(0), "Invalid paymaster");
+        require(_paymaster != address(0), "Bad paymaster");
         require(!infrastructureLocked, "Infra locked");
         votingPaymaster = VotingPaymaster(_paymaster);
         emit PaymasterSet(_paymaster);
@@ -149,7 +150,7 @@ contract TokenIntegratedVoting is TimeValidator {
         string calldata tokenName,
         string calldata tokenSymbol
     ) external virtual onlyOwner {
-        require(address(tokenManager) != address(0), "TokenManager not set");
+        require(address(tokenManager) != address(0), "No TM");
 
         tokenManager.createPollToken(pollId, tokenName, tokenSymbol);
     }
@@ -165,8 +166,8 @@ contract TokenIntegratedVoting is TimeValidator {
         address[] calldata voters,
         uint256[] calldata amounts
     ) external virtual onlyOwner {
-        require(address(tokenManager) != address(0), "TokenManager not set");
-        require(voters.length > 0, "Empty voters array");
+        require(address(tokenManager) != address(0), "No TM");
+        require(voters.length > 0, "Empty array");
 
         TokenConfig memory config = pollTokenConfigs[pollId];
 
@@ -209,8 +210,8 @@ contract TokenIntegratedVoting is TimeValidator {
         // - Option is valid
         // - Voter has sufficient tokens
 
-        require(address(tokenManager) != address(0), "TokenManager not set");
-        require(!hasVotedWithToken[pollId][voter], "Already voted with token");
+        require(address(tokenManager) != address(0), "No TM");
+        require(!hasVotedWithToken[pollId][voter], "Token used");
 
         // Burn tokens
         tokenManager.burnTokensForVote(pollId, voter);
@@ -260,7 +261,7 @@ contract TokenIntegratedVoting is TimeValidator {
      * @param newOwner New owner address
      */
     function transferOwnership(address newOwner) external onlyOwner {
-        require(newOwner != address(0), "New owner is zero address");
+        require(newOwner != address(0), "Zero address");
         pendingOwner = newOwner;
         emit OwnershipTransferStarted(owner, newOwner);
     }
@@ -281,6 +282,7 @@ contract TokenIntegratedVoting is TimeValidator {
      */
     function cancelOwnershipTransfer() external onlyOwner {
         pendingOwner = address(0);
+        emit OwnershipTransferCancelled(msg.sender);
     }
 
     /**

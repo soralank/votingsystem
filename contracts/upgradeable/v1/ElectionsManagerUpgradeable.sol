@@ -54,6 +54,9 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
     uint public constant MAX_OPTIONS = 100;
     uint public constant MAX_VOTERS_BATCH = 50;
 
+    // Infrastructure lock: permanently prevents swapping critical contracts (H-8 fix)
+    bool public infrastructureLocked;
+
     // Events
     event PollCreated(uint indexed pollId, string title, address indexed admin, uint startTime, uint endTime, bool tokenVotingEnabled, bool tokenVotingRequired);
     event OptionAdded(uint indexed pollId, uint indexed optionId, string optionName);
@@ -63,6 +66,10 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
     event VoterUnauthorized(uint indexed pollId, address indexed voter);
     event ContractUpgraded(string newVersion, address implementation);
     event FranchiseManagerSet(address indexed manager);
+    event InfrastructureLocked();
+    event Initialized(address indexed initializer);
+    event TokenManagerSet(address indexed tokenManager);
+    event PaymasterSet(address indexed paymaster);
 
     // Franchise manager (sub-admin franchise system)
     address public franchiseMgr;
@@ -75,20 +82,43 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
     function initialize() public initializer {
         __Ownable_init(msg.sender);
         __UUPSUpgradeable_init();
+        emit Initialized(msg.sender);
     }
 
     function setTokenManager(address _tokenManager) external onlyOwner {
+        require(_tokenManager != address(0), "Invalid address");
+        require(!infrastructureLocked, "Infra locked");
         tokenManager = TokenManager(_tokenManager);
+        emit TokenManagerSet(_tokenManager);
     }
 
     function setVotingPaymaster(address payable _paymaster) external onlyOwner {
+        require(_paymaster != address(0), "Invalid address");
+        require(!infrastructureLocked, "Infra locked");
         votingPaymaster = VotingPaymaster(_paymaster);
+        emit PaymasterSet(_paymaster);
     }
 
     function setFranchiseManager(address _fm) external onlyOwner {
         require(_fm != address(0), "Invalid address");
+        require(!infrastructureLocked, "Infra locked");
         franchiseMgr = _fm;
         emit FranchiseManagerSet(_fm);
+    }
+
+    /**
+     * @notice Lock infrastructure permanently — prevents swapping critical contracts
+     * @dev Called automatically when first poll is created, or manually by owner
+     */
+    function lockInfrastructure() external onlyOwner {
+        _lockInfrastructure();
+    }
+
+    function _lockInfrastructure() internal {
+        if (!infrastructureLocked) {
+            infrastructureLocked = true;
+            emit InfrastructureLocked();
+        }
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
@@ -118,6 +148,9 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
         require(durationSeconds >= MIN_POLL_DURATION, "Poll duration too short.");
 
         uint endTime = startTime + durationSeconds;
+
+        // Lock infrastructure after first poll is created (H-8 fix)
+        _lockInfrastructure();
 
         pollsCount++;
         uint pollId = pollsCount;
@@ -176,6 +209,8 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
 
     function addVoters(uint pollId, address[] calldata voters) public onlyAdminOrOwner(pollId) {
         require(polls[pollId].exists, "Poll does not exist.");
+        require(block.timestamp < polls[pollId].startTime, "Poll started");
+        require(!polls[pollId].ended, "Poll ended");
         require(voters.length > 0 && voters.length <= MAX_VOTERS_BATCH, "Batch size exceeds maximum limit.");
 
         for (uint i = 0; i < voters.length; i++) {
@@ -225,19 +260,22 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
         require(block.timestamp >= polls[pollId].startTime && block.timestamp < polls[pollId].endTime, "Poll not active for voting.");
         require(optionId > 0 && optionId <= polls[pollId].optionsCount, "Invalid option.");
 
-        tokenManager.burnTokensForVote(pollId, voter);
-
+        // CEI: Update state BEFORE external call
         hasVoted[pollId][voter] = true;
         votesCount[pollId][optionId]++;
         polls[pollId].totalVotes++;
         voterChoice[pollId][voter] = optionId;
         voteMethod[pollId][voter] = VoteMethod.Token;
 
+        // External call: burn tokens
+        tokenManager.burnTokensForVote(pollId, voter);
+
         emit Voted(pollId, voter, optionId, VoteMethod.Token);
     }
 
-    function revealResults(uint pollId) external onlyAdminOrOwner(pollId) {
+    function revealResults(uint pollId) external {
         require(polls[pollId].exists, "Poll does not exist.");
+        require(!polls[pollId].revealed, "Already revealed.");
         require(block.timestamp >= polls[pollId].endTime + TIME_BUFFER, "Poll not ended");
 
         polls[pollId].revealed = true;
@@ -249,7 +287,7 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
     // View functions
     function getVotes(uint pollId, uint optionId) external view returns (uint) {
         require(polls[pollId].exists, "Poll does not exist.");
-        require(polls[pollId].revealed || msg.sender == polls[pollId].admin || msg.sender == owner(), "Results not revealed.");
+        require(polls[pollId].revealed, "Results not revealed.");
         return votesCount[pollId][optionId];
     }
 
@@ -271,7 +309,7 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
     }
 
     function getVoterChoice(uint pollId, address voter) external view returns (uint) {
-        require(polls[pollId].revealed || msg.sender == polls[pollId].admin || msg.sender == owner(), "Results not revealed.");
+        require(polls[pollId].revealed, "Results not revealed.");
         return voterChoice[pollId][voter];
     }
 
@@ -329,5 +367,5 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
         return string(bstr);
     }
 
-    uint256[49] private __gap;
+    uint256[48] private __gap;
 }
