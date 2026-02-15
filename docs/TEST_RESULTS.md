@@ -24,7 +24,7 @@
 ### 1. Advanced Features (35 tests) — `advancedFeatures.test.ts`
 - **Multi-Choice Voting** (8): Configure, vote, reveal, duplicates, limits
 - **Quadratic Voting** (7): Enable, cost calculation, insufficient tokens, reveal
-- **Vote Delegation** (10): Delegate, revoke, chain prevention, multiple delegations
+- **Vote Delegation** (13): Delegate, revoke, chain prevention, multiple delegations, delegation toggle, event emission, delegation disabled
 - **IPFS Poll Metadata** (6): Set, update, events, access control
 - **Combined Feature Scenarios** (4): Multi-feature interactions
 

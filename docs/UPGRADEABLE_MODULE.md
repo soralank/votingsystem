@@ -533,3 +533,5 @@ contract.on("ContractUpgraded", (newVersion, implementation) => {
 ---
 
 **Remember**: With great upgradeability comes great responsibility. Always test thoroughly before upgrading on mainnet!
+
+Delegation toggle: Supported. Admin/owner must call enableDelegation(pollId) before delegation is allowed.
