@@ -70,7 +70,7 @@ The system ensures election integrity through five key mechanisms:
      ✗ All 5 vote functions reject secret ballot polls (must use SBM)
 
   3. DEMOCRATIC REVEAL
-     After: endTime + 30s (TIME_BUFFER) + 1 hour (REVEAL_DURATION)
+     After: endTime + 30s (TIME_BUFFER) + reveal duration (configurable per-poll, default 1 hour)
      ✓ Anyone can call revealResults(pollId)
      ✗ Admin cannot withhold results
 
@@ -301,7 +301,7 @@ UPGRADEABLE VERSION (UUPS):
 └──────────────────────────────────────────────────────────────────────────────┘
 
 Timeline:
-  |-------- Voting Period --------|-- 30s --|---- 1 hour Reveal ----|
+  |-------- Voting Period --------|-- 30s --|---- Reveal (configurable) ----|
   startTime                     endTime  +buffer  revealDeadline
 
 PHASE 1: COMMIT (during voting period)
@@ -325,7 +325,7 @@ PHASE 1: COMMIT (during voting period)
 │  • Nobody can see the actual vote from the hash                       │
 └────────────────────────────────────────────────────────────────────────┘
 
-PHASE 2: REVEAL (after endTime + 30s buffer, within 1 hour window)
+PHASE 2: REVEAL (after endTime + 30s buffer, within configurable reveal window)
 ┌────────────────────────────────────────────────────────────────────────┐
 │  Voter's Browser                                                       │
 │  1. Retrieve saved salt and optionId                                  │

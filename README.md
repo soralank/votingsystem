@@ -133,14 +133,14 @@ Phase 1 (Commit): During voting period
   commitHash = keccak256(abi.encodePacked(pollId, optionId, salt, voterAddress))
   voter → SecretBallotManager.commitVote(pollId, commitHash)
 
-Phase 2 (Reveal): After voting ends (1-hour window)
+Phase 2 (Reveal): After voting ends (configurable window, default 1 hour)
   voter → SecretBallotManager.revealVote(pollId, optionId, salt)
   SecretBallotManager → ElectionsManager.recordSecretVote() (callback)
 ```
 
 ### Democratic Reveal
 `revealResults(pollId)` can be called by **anyone** (not just admin) after:
-- Poll end time + TIME_BUFFER (30s) + REVEAL_DURATION (1 hour)
+- Poll end time + TIME_BUFFER (30s) + reveal duration (configurable per-poll, default 1 hour)
 
 No admin can withhold or delay results once the reveal window passes.
 
@@ -241,7 +241,9 @@ VotingToken.sol
 - `voteMultiChoice(pollId, optionIds[])` — Multi-choice vote
 - `voteQuadratic(pollId, optionIds[], amounts[])` — Quadratic vote
 - `voteAsDelegate(pollId, optionId, delegator)` — Delegate vote
-- `enableSecretBallot(pollId)` — Enable commit-reveal for a poll
+- `enableSecretBallot(pollId)` — Enable commit-reveal for a poll (requires SBM to be set)
+- `setRevealDuration(pollId, duration)` — Set per-poll reveal duration (admin/owner, forwards to SBM)
+- `setDefaultRevealDuration(duration)` — Set default reveal duration for all polls (owner, forwards to SBM)
 - `revealResults(pollId)` — Reveal results (anyone, after time expires)
 - `setPollMetadata(pollId, uri)` — Set IPFS metadata (before start only)
 

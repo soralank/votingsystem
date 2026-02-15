@@ -393,6 +393,16 @@ This document provides a comprehensive reference of all error codes and messages
 - **Frontend Action**: Display "Secret ballot polls do not support direct delegation. Use commit-reveal."
 - **HTTP Status**: 400
 
+#### `"Already enabled"`
+- **When**: Calling `enableSecretBallot()` on a poll that already has secret ballot enabled
+- **Frontend Action**: Display "Secret ballot is already enabled for this poll"
+- **HTTP Status**: 400
+
+#### `"SBM not set"`
+- **When**: Calling `enableSecretBallot()`, `setRevealDuration()`, or `setDefaultRevealDuration()` before `setSecretBallotManager()` has been called
+- **Frontend Action**: Display "SecretBallotManager has not been configured. Contact the contract owner."
+- **HTTP Status**: 500
+
 #### `"Only SBM"`
 - **When**: Non-SecretBallotManager contract calls `recordSecretVote()` or `burnTokenForCommit()`
 - **Frontend Action**: Internal error — should not occur in normal flow
@@ -458,6 +468,16 @@ This document provides a comprehensive reference of all error codes and messages
 #### `"Token voting not enabled."`
 - **When**: Using `commitVoteWithToken()` on a poll without token voting
 - **Frontend Action**: Display "Token voting is not enabled for this poll"
+- **HTTP Status**: 400
+
+#### `"Only owner or EM"`
+- **When**: Non-owner, non-ElectionsManager address calls `setRevealDuration()` or `setDefaultRevealDuration()` on SBM directly
+- **Frontend Action**: Internal error — use ElectionsManager proxy functions instead of calling SBM directly
+- **HTTP Status**: 403
+
+#### `"Reveal duration too short"`
+- **When**: Setting reveal duration below 1 minute (MIN_REVEAL_DURATION)
+- **Frontend Action**: Display "Reveal duration must be at least 1 minute"
 - **HTTP Status**: 400
 
 ### Metadata Lock Errors

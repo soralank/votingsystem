@@ -9,10 +9,12 @@ import "./modules/MetadataVoting.sol";
 
 /**
  * @title ISecretBallotManager
- * @notice Minimal interface for ElectionsManager to read configurable reveal duration
+ * @notice Interface for ElectionsManager to interact with SecretBallotManager
  */
 interface ISecretBallotManager {
     function getRevealDuration(uint pollId) external view returns (uint);
+    function setRevealDuration(uint pollId, uint duration) external;
+    function setDefaultRevealDuration(uint duration) external;
 }
 
 /**
@@ -760,9 +762,29 @@ contract ElectionsManager is TokenIntegratedVoting {
         require(polls[pollId].exists, "Poll does not exist.");
         require(!_hasStarted(polls[pollId].startTime), "Poll already started.");
         require(!secretBallot[pollId], "Already enabled");
+        require(secretBallotMgr != address(0), "SBM not set");
 
         secretBallot[pollId] = true;
         emit SecretBallotEnabled(pollId);
+    }
+
+    /**
+     * @notice Set reveal duration for a specific poll (forwards to SecretBallotManager)
+     * @param pollId Poll ID
+     * @param duration Duration in seconds (minimum 1 minute, 0 = use default)
+     */
+    function setRevealDuration(uint pollId, uint duration) external onlyAdminOrOwner(pollId) {
+        require(secretBallotMgr != address(0), "SBM not set");
+        ISecretBallotManager(secretBallotMgr).setRevealDuration(pollId, duration);
+    }
+
+    /**
+     * @notice Set the default reveal duration for new polls (forwards to SecretBallotManager)
+     * @param duration Duration in seconds (minimum 1 minute)
+     */
+    function setDefaultRevealDuration(uint duration) external onlyOwner {
+        require(secretBallotMgr != address(0), "SBM not set");
+        ISecretBallotManager(secretBallotMgr).setDefaultRevealDuration(duration);
     }
 
     /**

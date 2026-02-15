@@ -234,10 +234,10 @@ await electionsManager.connect(admin).enableSecretBallot(pollId);
 
 // Configure reveal duration for this poll (optional, default is 1 hour)
 // Must be set before poll starts. Minimum 1 minute.
-await secretBallotManager.connect(owner).setRevealDuration(pollId, 10 * 60); // 10 minutes
+await electionsManager.connect(admin).setRevealDuration(pollId, 10 * 60); // 10 minutes
 
-// Or change the default for ALL future polls
-await secretBallotManager.connect(owner).setDefaultRevealDuration(15 * 60); // 15 minutes
+// Or change the default for ALL future polls (owner only)
+await electionsManager.connect(owner).setDefaultRevealDuration(15 * 60); // 15 minutes
 
 // Set IPFS metadata (before poll starts only!)
 await electionsManager.connect(admin).setPollMetadata(
@@ -917,7 +917,9 @@ Reveal duration defaults to 1 hour. Configurable per-poll via:
 | `voteAsDelegate` | `(uint pollId, uint optionId, address delegator)` |
 | `setMaxChoices` | `(uint pollId, uint maxChoices)` |
 | `enableQuadraticVoting` | `(uint pollId)` |
-| `enableSecretBallot` | `(uint pollId)` |
+| `enableSecretBallot` | `(uint pollId)` — requires SBM to be set |
+| `setRevealDuration` | `(uint pollId, uint duration)` — admin/owner, forwards to SBM. 0=default, min 1 min |
+| `setDefaultRevealDuration` | `(uint duration)` — owner only, forwards to SBM. min 1 min |
 | `setPollMetadata` | `(uint pollId, string metadataURI)` |
 | `revealResults` | `(uint pollId)` |
 | `setTokenManager` | `(address)` |
@@ -969,8 +971,8 @@ Reveal duration defaults to 1 hour. Configurable per-poll via:
 | `commitVote` | write | `(uint pollId, bytes32 commitHash)` |
 | `commitVoteWithToken` | write | `(uint pollId, bytes32 commitHash)` |
 | `revealVote` | write | `(uint pollId, uint optionId, bytes32 salt)` |
-| `setDefaultRevealDuration` | write | `(uint duration)` — owner only, min 1 min |
-| `setRevealDuration` | write | `(uint pollId, uint duration)` — owner only, before poll starts, 0=default |
+| `setDefaultRevealDuration` | write | `(uint duration)` — owner or ElectionsManager, min 1 min |
+| `setRevealDuration` | write | `(uint pollId, uint duration)` — owner or ElectionsManager, before poll starts, 0=default |
 | `isInCommitPhase` | view | `(uint pollId) → bool` |
 | `isInRevealPhase` | view | `(uint pollId) → bool` |
 | `getRevealDeadline` | view | `(uint pollId) → uint` |

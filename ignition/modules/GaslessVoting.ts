@@ -47,19 +47,20 @@ const GaslessVotingModule = buildModule("GaslessVotingModule", (m) => {
     electionsManager,
   ]);
 
-  // 5. Configure ElectionsManager with TokenManager reference
+  // 6. Configure ElectionsManager with TokenManager reference
   m.call(electionsManager, "setTokenManager", [tokenManager]);
 
-  // 6. Configure ElectionsManager with VotingPaymaster reference
+  // 7. Configure ElectionsManager with VotingPaymaster reference
   m.call(electionsManager, "setVotingPaymaster", [votingPaymaster]);
 
-  // 7. Configure ElectionsManager with SecretBallotManager reference
+  // 8. Configure ElectionsManager with SecretBallotManager reference
+  //    Must be set BEFORE enableSecretBallot() can be called on any poll
   m.call(electionsManager, "setSecretBallotManager", [secretBallotManager]);
 
-  // 8. Configure ElectionsManager with FranchiseManager reference
+  // 9. Configure ElectionsManager with FranchiseManager reference
   m.call(electionsManager, "setFranchiseManager", [franchiseManager]);
 
-  // 9. Fund the paymaster with initial ETH to cover gas costs
+  // 10. Fund the paymaster with initial ETH to cover gas costs
   m.call(votingPaymaster, "fund", [], { value: initialFunding });
 
   return {

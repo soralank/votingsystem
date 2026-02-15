@@ -56,7 +56,6 @@ The main contract (~841 lines, 24,411 bytes). Handles poll creation, voter autho
 |------|-------|---------|
 | `MAX_OPTIONS` | 100 | Max options per poll (DoS prevention) |
 | `MAX_VOTERS_BATCH` | 50 | Max voters per batch operation |
-| `REVEAL_DURATION` | 1 hour | Duration of reveal window for secret ballot |
 
 ### State Variables
 
@@ -99,10 +98,12 @@ MetadataVoting public metadataVoting;
 - **`voteAsDelegate(pollId, optionId, delegator)`** — Vote on behalf of delegator.
 
 #### Trust Features
-- **`enableSecretBallot(pollId)`** — Enable commit-reveal for a poll. Before start, admin/owner.
+- **`enableSecretBallot(pollId)`** — Enable commit-reveal for a poll. Requires SBM to be set (`secretBallotMgr != address(0)`). Before start, admin/owner.
 - **`setSecretBallotManager(address)`** — Set SBM address. Only before infrastructure lock.
 - **`setFranchiseManager(address)`** — Set franchise manager address. Only before infrastructure lock.
-- **`revealResults(pollId)`** — Reveal results. **Anyone** can call after endTime + buffer + REVEAL_DURATION.
+- **`revealResults(pollId)`** — Reveal results. **Anyone** can call after endTime + buffer + reveal duration (configurable per-poll).
+- **`setRevealDuration(pollId, duration)`** — Set per-poll reveal duration (forwards to SBM). Admin/owner. Minimum 1 minute, 0 = use default.
+- **`setDefaultRevealDuration(duration)`** — Set default reveal duration for all future polls (forwards to SBM). Owner only. Minimum 1 minute.
 - **`recordSecretVote(pollId, voter, optionId, isToken)`** — Callback from SBM only.
 - **`burnTokenForCommit(pollId, voter)`** — Callback from SBM for token commits.
 - **`setPollMetadata(pollId, uri)`** — Set IPFS metadata. Only before poll startTime.
@@ -163,7 +164,7 @@ Handles the commit-reveal voting mechanism. Deployed separately to keep Election
 
 | Name | Value | Purpose |
 |------|-------|---------|
-| `REVEAL_DURATION` | 1 hour | Reveal window duration |
+| `MIN_REVEAL_DURATION` | 1 minute | Minimum configurable reveal duration |
 | `TIME_BUFFER` | 30 seconds | Buffer between end and reveal start |
 
 ### State Variables
@@ -171,6 +172,8 @@ Handles the commit-reveal voting mechanism. Deployed separately to keep Election
 ```solidity
 IElectionsManager public electionsManager;
 address public owner;
+uint public defaultRevealDuration = 1 hours;             // Configurable default
+mapping(uint => uint) public pollRevealDuration;          // Per-poll custom duration (0 = use default)
 mapping(uint => mapping(address => bytes32)) private voteCommitments;  // PRIVATE
 mapping(uint => mapping(address => bool)) public hasCommitted;
 mapping(uint => mapping(address => bool)) public hasRevealed;
@@ -178,14 +181,22 @@ mapping(uint => uint) public commitCount;
 mapping(uint => uint) public revealCount;
 ```
 
+### Modifiers
+
+- **`onlyOwner`** — Restricts to contract owner.
+- **`onlyOwnerOrElectionsManager`** — Allows calls from owner OR the ElectionsManager contract (enables EM proxy functions).
+
 ### Functions
 
 - **`commitVote(pollId, commitHash)`** — Commit a vote hash during voting period. Validates: secret ballot enabled, voter authorized, poll active, not already committed.
 - **`commitVoteWithToken(pollId, commitHash)`** — Commit + burn token at commit time via `ElectionsManager.burnTokenForCommit()`.
 - **`revealVote(pollId, optionId, salt)`** — Reveal vote in the reveal window. Verifies `keccak256(pollId, optionId, salt, msg.sender) == stored hash`. Calls `ElectionsManager.recordSecretVote()`.
+- **`setDefaultRevealDuration(duration)`** — Set default reveal duration for new polls. Owner or ElectionsManager. Minimum 1 minute.
+- **`setRevealDuration(pollId, duration)`** — Set per-poll reveal duration. Owner or ElectionsManager. 0 = use default, otherwise minimum 1 minute.
+- **`getRevealDuration(pollId)`** — Returns effective reveal duration for a poll (custom if set, otherwise default).
 - **`isInCommitPhase(pollId)`** — Returns true if poll is currently active.
-- **`isInRevealPhase(pollId)`** — Returns true if in `[endTime + buffer, endTime + buffer + REVEAL_DURATION]`.
-- **`getRevealDeadline(pollId)`** — Returns `endTime + TIME_BUFFER + REVEAL_DURATION`.
+- **`isInRevealPhase(pollId)`** — Returns true if in `[endTime + buffer, endTime + buffer + revealDuration]`.
+- **`getRevealDeadline(pollId)`** — Returns `endTime + TIME_BUFFER + getRevealDuration(pollId)`.
 - **`getSecretBallotStatus(pollId)`** — Returns (commits, reveals, isSecretBallot, inCommitPhase, inRevealPhase).
 
 ### Commitment Hash Format
