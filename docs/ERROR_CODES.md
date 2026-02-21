@@ -1,4 +1,7 @@
 # Error Codes Reference - Token-Based Gasless Voting System
+# Contract Information
+
+Contact: ankit.soral@outlokk.com
 
 This document provides a comprehensive reference of all error codes and messages returned by the smart contracts. Use this to implement proper error handling and user-friendly messages in your frontend application.
 
