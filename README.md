@@ -449,7 +449,7 @@ REPORT_GAS=true npx hardhat test
 - **Frontend dApp (React + ethers.js)**: Completed, awaiting professional security audit
 
 ### Report Security Issues
-Please report vulnerabilities to: [security@example.com]
+Please report vulnerabilities to: [security@example.com], ankit.soral@outlokk.com
 
 ---
 
