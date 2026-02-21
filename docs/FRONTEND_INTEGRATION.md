@@ -1,4 +1,5 @@
 # Frontend Integration Guide — Voting System v4.1
+# Contact: ankit.soral@outlook.com
 
 Complete guide for frontend developers to integrate with the blockchain voting system smart contracts.
 
