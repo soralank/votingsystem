@@ -446,6 +446,7 @@ REPORT_GAS=true npx hardhat test
 ### Audit Status
 - **Self-Audited**: ✅
 - **Professional Audit**: Pending
+- **Frontend dApp (React + ethers.js)**: Completed, awaiting professional security audit
 
 ### Report Security Issues
 Please report vulnerabilities to: [security@example.com]
@@ -478,12 +479,8 @@ Please report vulnerabilities to: [security@example.com]
 - [x] 396 passing tests (12 test suites)
 
 ### 🚧 In Progress
-- [ ] Frontend dApp (React + ethers.js) — separate repository
+ [x] Frontend dApp (React + ethers.js) — completed, awaiting professional security audit
 - [ ] Professional security audit
-
-### 📋 Planned
-- [ ] Anonymous voting (zk-SNARKs)
-- [ ] DAO governance integration
 - [ ] Cross-chain voting (bridge support)
 - [ ] Formal verification
 
@@ -519,7 +516,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for gu
 
 ## 📝 License
 
-This project is licensed under the **MIT** license. See [LICENSE](./LICENSE) for details.
+This project is licensed under a custom license by Ankit Soral. See [LICENSE](./LICENSE) for details.
 
 ---
 
