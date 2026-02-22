@@ -67,7 +67,7 @@ describe("Trust Features", function () {
       const tm2 = await TokenManager2.deploy(em.target);
 
       await expect(em.connect(owner).setTokenManager(tm2.target))
-        .to.be.revertedWith("Infra locked");
+        .to.be.revertedWithCustomError(em, "InfraLocked");
     });
 
     it("should prevent changing Paymaster after lock", async function () {
@@ -80,7 +80,7 @@ describe("Trust Features", function () {
 
       const vp2 = await VotingPaymaster.deploy(em.target, tokenManager.target, owner.address);
       await expect(em.connect(owner).setVotingPaymaster(vp2.target))
-        .to.be.revertedWith("Infra locked");
+        .to.be.revertedWithCustomError(em, "InfraLocked");
     });
 
     it("should allow manual lockInfrastructure by owner", async function () {
@@ -104,7 +104,7 @@ describe("Trust Features", function () {
 
     it("should reject lockInfrastructure from non-owner", async function () {
       await expect(em.connect(attacker).lockInfrastructure())
-        .to.be.revertedWith("Only owner can call");
+        .to.be.revertedWithCustomError(em, "Unauthorized");
     });
 
     it("should prevent changing SecretBallotManager after lock (H-1)", async function () {
@@ -114,7 +114,7 @@ describe("Trust Features", function () {
       const SBM2 = await ethers.getContractFactory("SecretBallotManager");
       const sbm2 = await SBM2.deploy(em.target);
       await expect(em.connect(owner).setSecretBallotManager(sbm2.target))
-        .to.be.revertedWith("Infra locked");
+        .to.be.revertedWithCustomError(em, "InfraLocked");
     });
 
     it("should prevent changing FranchiseManager after lock (H-2)", async function () {
@@ -124,7 +124,7 @@ describe("Trust Features", function () {
       const FM = await ethers.getContractFactory("FranchiseManager");
       const fm = await FM.deploy(em.target);
       await expect(em.connect(owner).setFranchiseManager(fm.target))
-        .to.be.revertedWith("Infra locked");
+        .to.be.revertedWithCustomError(em, "InfraLocked");
     });
   });
 
@@ -151,7 +151,7 @@ describe("Trust Features", function () {
           ethers.ZeroAddress,
           thirdPartyPM.target
         )
-      ).to.be.revertedWith("Bad paymaster");
+      ).to.be.revertedWithCustomError(em, "BadPaymaster");
     });
 
     it("should allow createPoll with owner-administered paymaster", async function () {
@@ -238,7 +238,7 @@ describe("Trust Features", function () {
 
     it("should not allow reveal before poll ends", async function () {
       await expect(em.connect(admin).revealResults(pollId))
-        .to.be.revertedWith("Poll not ended");
+        .to.be.revertedWithCustomError(em, "PollNotEnded");
     });
 
     it("should allow ANYONE to reveal after time expires (not just admin)", async function () {
@@ -269,7 +269,7 @@ describe("Trust Features", function () {
 
       await em.connect(admin).revealResults(pollId);
       await expect(em.connect(admin).revealResults(pollId))
-        .to.be.revertedWith("Already revealed.");
+        .to.be.revertedWithCustomError(em, "PollAlreadyRevealed");
     });
 
     it("should hide vote counts before reveal, show after", async function () {
@@ -312,7 +312,7 @@ describe("Trust Features", function () {
       await ethers.provider.send("evm_mine", []);
 
       await expect(em.connect(admin).setPollMetadata(pollId, "ipfs://tampered"))
-        .to.be.revertedWith("Poll started");
+        .to.be.revertedWithCustomError(em, "PollStarted");
     });
   });
 
@@ -337,7 +337,7 @@ describe("Trust Features", function () {
       await ethers.provider.send("evm_mine", []);
 
       await expect(em.connect(alice).voteInPoll(pollId, 1))
-        .to.be.revertedWith("Secret poll");
+        .to.be.revertedWithCustomError(em, "SecretPoll");
     });
 
     it("should prevent enableSecretBallot after poll starts", async function () {
@@ -350,12 +350,12 @@ describe("Trust Features", function () {
       await ethers.provider.send("evm_mine", []);
 
       await expect(em.connect(admin).enableSecretBallot(pid2))
-        .to.be.revertedWith("Poll started");
+        .to.be.revertedWithCustomError(em, "PollStarted");
     });
 
     it("should prevent double enableSecretBallot", async function () {
       await expect(em.connect(admin).enableSecretBallot(pollId))
-        .to.be.revertedWith("Already enabled");
+        .to.be.revertedWithCustomError(em, "SecretBallotAlreadyEnabled");
     });
 
     it("should emit SecretBallotEnabled event", async function () {
@@ -411,7 +411,7 @@ describe("Trust Features", function () {
       await ethers.provider.send("evm_mine", []);
 
       await expect(sbm.connect(attacker).commitVote(pollId, commitHash))
-        .to.be.revertedWith("Not authorized.");
+        .to.be.revertedWithCustomError(em, "NotVoter");
     });
 
     it("should reject double commit", async function () {
@@ -421,7 +421,7 @@ describe("Trust Features", function () {
 
       await sbm.connect(alice).commitVote(pollId, commitHash);
       await expect(sbm.connect(alice).commitVote(pollId, commitHash))
-        .to.be.revertedWith("Already committed.");
+        .to.be.revertedWithCustomError(sbm, "AlreadyCommitted");
     });
 
     it("should reject commit with zero hash", async function () {
@@ -430,7 +430,7 @@ describe("Trust Features", function () {
       await ethers.provider.send("evm_mine", []);
 
       await expect(sbm.connect(alice).commitVote(pollId, ethers.ZeroHash))
-        .to.be.revertedWith("Invalid commit hash.");
+        .to.be.revertedWithCustomError(sbm, "InvalidCommitHash");
     });
 
     it("should allow reveal during reveal period with correct salt", async function () {
@@ -466,7 +466,7 @@ describe("Trust Features", function () {
 
       const wrongSalt = ethers.hexlify(ethers.randomBytes(32));
       await expect(sbm.connect(alice).revealVote(pollId, 1, wrongSalt))
-        .to.be.revertedWith("Invalid reveal: hash mismatch.");
+        .to.be.revertedWithCustomError(sbm, "HashMismatch");
     });
 
     it("should reject reveal with wrong optionId", async function () {
@@ -481,7 +481,7 @@ describe("Trust Features", function () {
       await ethers.provider.send("evm_mine", []);
 
       await expect(sbm.connect(alice).revealVote(pollId, 2, salt))
-        .to.be.revertedWith("Invalid reveal: hash mismatch.");
+        .to.be.revertedWithCustomError(sbm, "HashMismatch");
     });
 
     it("should reject reveal before reveal period", async function () {
@@ -493,7 +493,7 @@ describe("Trust Features", function () {
 
       // Still in commit phase
       await expect(sbm.connect(alice).revealVote(pollId, 1, salt))
-        .to.be.revertedWith("Not in reveal period.");
+        .to.be.revertedWithCustomError(sbm, "NotInRevealPeriod");
     });
 
     it("should reject double reveal", async function () {
@@ -509,7 +509,7 @@ describe("Trust Features", function () {
 
       await sbm.connect(alice).revealVote(pollId, 1, salt);
       await expect(sbm.connect(alice).revealVote(pollId, 1, salt))
-        .to.be.revertedWith("Already revealed.");
+        .to.be.revertedWithCustomError(sbm, "AlreadyRevealed");
     });
 
     it("full commit-reveal-results flow", async function () {
@@ -577,7 +577,7 @@ describe("Trust Features", function () {
       await ethers.provider.send("evm_mine", []);
 
       await expect(em.connect(admin).revealResults(pollId))
-        .to.be.revertedWith("Reveal period active");
+        .to.be.revertedWithCustomError(em, "RevealPeriodActive");
     });
 
     it("should allow results reveal after reveal period ends", async function () {
@@ -645,7 +645,7 @@ describe("Trust Features", function () {
       const pollId = bnToNumber(await em.pollsCount());
 
       await expect(em.connect(attacker).recordSecretVote(pollId, alice.address, 1, false))
-        .to.be.revertedWith("Only SBM");
+        .to.be.revertedWithCustomError(em, "Unauthorized");
     });
 
     it("should reject burnTokenForCommit from non-SBM", async function () {
@@ -654,17 +654,17 @@ describe("Trust Features", function () {
       const pollId = bnToNumber(await em.pollsCount());
 
       await expect(em.connect(attacker).burnTokenForCommit(pollId, alice.address))
-        .to.be.revertedWith("Only SBM");
+        .to.be.revertedWithCustomError(em, "Unauthorized");
     });
 
     it("should only allow owner to set SecretBallotManager", async function () {
       await expect(em.connect(attacker).setSecretBallotManager(attacker.address))
-        .to.be.revertedWith("Only owner can call");
+        .to.be.revertedWithCustomError(em, "Unauthorized");
     });
 
     it("should reject zero address for SecretBallotManager", async function () {
       await expect(em.connect(owner).setSecretBallotManager(ethers.ZeroAddress))
-        .to.be.revertedWith("Invalid address");
+        .to.be.revertedWithCustomError(em, "ZeroAddress");
     });
 
     it("should emit SecretBallotManagerSet event", async function () {
@@ -704,7 +704,7 @@ describe("Trust Features", function () {
       );
 
       await expect(sbm.connect(alice).commitVote(pollId, hash))
-        .to.be.revertedWith("Token-required: use commitVoteWithToken().");
+        .to.be.revertedWithCustomError(em, "TokenVotingRequired");
     });
 
     it("should allow commitVoteWithToken and burn token", async function () {
@@ -775,7 +775,7 @@ describe("Trust Features", function () {
       );
 
       await expect(sbm.connect(alice).commitVote(pollId, hash))
-        .to.be.revertedWith("Secret ballot not enabled.");
+        .to.be.revertedWithCustomError(sbm, "SecretBallotNotEnabled");
     });
   });
 
@@ -811,7 +811,7 @@ describe("Trust Features", function () {
 
       await expect(
         em.connect(admin).addVotersWithTokens(pollId, [alice.address], 0)
-      ).to.be.revertedWith("Zero tokens");
+      ).to.be.revertedWithCustomError(em, "ZeroAmount");
     });
   });
 
@@ -825,7 +825,7 @@ describe("Trust Features", function () {
 
       await expect(
         em.connect(admin).changePollAdmin(pollId, admin.address)
-      ).to.be.revertedWith("Same admin");
+      ).to.be.revertedWithCustomError(em, "SameAddress");
     });
   });
 
@@ -842,26 +842,26 @@ describe("Trust Features", function () {
     it("SecretBallotManager should reject zero address transfer", async function () {
       await expect(
         sbm.transferOwnership(ethers.ZeroAddress)
-      ).to.be.revertedWith("Invalid address");
+      ).to.be.revertedWithCustomError(em, "ZeroAddress");
     });
 
     it("SecretBallotManager should reject transfer to same owner", async function () {
       await expect(
         sbm.transferOwnership(owner.address)
-      ).to.be.revertedWith("Already owner");
+      ).to.be.revertedWithCustomError(em, "SameAddress");
     });
 
     it("SecretBallotManager should reject non-owner transfer", async function () {
       await expect(
         sbm.connect(alice).transferOwnership(bob.address)
-      ).to.be.revertedWith("Only owner");
+      ).to.be.revertedWithCustomError(em, "Unauthorized");
     });
 
     it("SecretBallotManager should reject non-pending acceptOwnership", async function () {
       await sbm.transferOwnership(alice.address);
       await expect(
         sbm.connect(bob).acceptOwnership()
-      ).to.be.revertedWith("Only pending owner");
+      ).to.be.revertedWithCustomError(em, "OnlyPendingOwner");
     });
   });
 

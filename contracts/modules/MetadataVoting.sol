@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: LicenseRef-ANKIT-SORAL
 pragma solidity ^0.8.20;
 
+import "../VotingErrors.sol";
+
 /**
  * @title MetadataVoting
  * @notice Module for IPFS poll metadata management
@@ -17,7 +19,7 @@ contract MetadataVoting {
     event PollMetadataSet(uint indexed pollId, string metadataURI);
 
     modifier onlyElectionsManager() {
-        require(msg.sender == electionsManager, "Only ElectionsManager");
+        if (!(msg.sender == electionsManager)) revert Unauthorized();
         _;
     }
 
@@ -31,7 +33,7 @@ contract MetadataVoting {
      * @param metadataURI IPFS URI
      */
     function setPollMetadata(uint pollId, string calldata metadataURI) external onlyElectionsManager {
-        require(bytes(metadataURI).length > 0, "Metadata URI cannot be empty.");
+        if (!(bytes(metadataURI).length > 0)) revert EmptyMetadata();
         pollMetadataURI[pollId] = metadataURI;
         emit PollMetadataSet(pollId, metadataURI);
     }

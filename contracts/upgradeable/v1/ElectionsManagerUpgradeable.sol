@@ -6,6 +6,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "../../TokenManager.sol";
 import "../../VotingPaymaster.sol";
+import "../../VotingErrors.sol";
 
 /**
 * @title ElectionsManagerUpgradeable V1
@@ -86,22 +87,22 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
     }
 
     function setTokenManager(address _tokenManager) external onlyOwner {
-        require(_tokenManager != address(0), "Invalid address");
-        require(!infrastructureLocked, "Infra locked");
+        if (!(_tokenManager != address(0))) revert ZeroAddress();
+        if (infrastructureLocked) revert InfraLocked();
         tokenManager = TokenManager(_tokenManager);
         emit TokenManagerSet(_tokenManager);
     }
 
     function setVotingPaymaster(address payable _paymaster) external onlyOwner {
-        require(_paymaster != address(0), "Invalid address");
-        require(!infrastructureLocked, "Infra locked");
+        if (!(_paymaster != address(0))) revert ZeroAddress();
+        if (infrastructureLocked) revert InfraLocked();
         votingPaymaster = VotingPaymaster(_paymaster);
         emit PaymasterSet(_paymaster);
     }
 
     function setFranchiseManager(address _fm) external onlyOwner {
-        require(_fm != address(0), "Invalid address");
-        require(!infrastructureLocked, "Infra locked");
+        if (!(_fm != address(0))) revert ZeroAddress();
+        if (infrastructureLocked) revert InfraLocked();
         franchiseMgr = _fm;
         emit FranchiseManagerSet(_fm);
     }
@@ -139,13 +140,13 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
         address /* customTokenManager */,
         address /* customVotingPaymaster */
     ) external returns (uint) {
-        require(msg.sender == owner() || msg.sender == franchiseMgr, "Not authorized");
-        require(bytes(title).length > 0, "Title cannot be empty");
-        require(!titleExists[title], "Poll title already exists.");
-        require(admin != address(0), "admin zero");
-        require(startTime >= block.timestamp, "Start time cannot be in the past.");
-        require(startTime <= block.timestamp + MAX_FUTURE_START, "Start time too far in future.");
-        require(durationSeconds >= MIN_POLL_DURATION, "Poll duration too short.");
+        if (!(msg.sender == owner() || msg.sender == franchiseMgr)) revert Unauthorized();
+        if (!(bytes(title).length > 0)) revert EmptyTitle();
+        if (titleExists[title]) revert DuplicateTitle();
+        if (!(admin != address(0))) revert ZeroAddress();
+        if (!(startTime >= block.timestamp)) revert StartTimeInPast();
+        if (!(startTime <= block.timestamp + MAX_FUTURE_START)) revert StartTimeTooFarInFuture();
+        if (!(durationSeconds >= MIN_POLL_DURATION)) revert DurationTooShort();
 
         uint endTime = startTime + durationSeconds;
 
@@ -183,11 +184,11 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
     }
 
     function addOptionToPoll(uint pollId, string calldata optionName) external onlyAdminOrOwner(pollId) {
-        require(polls[pollId].exists, "Poll does not exist.");
-        require(block.timestamp < polls[pollId].startTime, "Poll started");
-        require(!polls[pollId].ended, "Poll ended");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (!(block.timestamp < polls[pollId].startTime)) revert PollStarted();
+        if (polls[pollId].ended) revert PollEnded();
         // Note: p.ended is kept in struct for storage layout but never set manually
-        require(polls[pollId].optionsCount < MAX_OPTIONS, "Maximum options limit reached.");
+        if (!(polls[pollId].optionsCount < MAX_OPTIONS)) revert MaxOptionsReached();
 
         polls[pollId].optionsCount++;
         uint optionId = polls[pollId].optionsCount;
@@ -197,21 +198,21 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
     }
 
     function addVoter(uint pollId, address voter) external onlyAdminOrOwner(pollId) {
-        require(polls[pollId].exists, "Poll does not exist.");
-        require(block.timestamp < polls[pollId].startTime, "Poll started");
-        require(!polls[pollId].ended, "Poll ended");
-        require(voter != address(0), "Invalid voter address.");
-        require(!authorizedVoters[pollId][voter], "Voter already authorized.");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (!(block.timestamp < polls[pollId].startTime)) revert PollStarted();
+        if (polls[pollId].ended) revert PollEnded();
+        if (!(voter != address(0))) revert ZeroAddress();
+        if (authorizedVoters[pollId][voter]) revert DuplicateVoter();
 
         authorizedVoters[pollId][voter] = true;
         emit VoterAuthorized(pollId, voter);
     }
 
     function addVoters(uint pollId, address[] calldata voters) public onlyAdminOrOwner(pollId) {
-        require(polls[pollId].exists, "Poll does not exist.");
-        require(block.timestamp < polls[pollId].startTime, "Poll started");
-        require(!polls[pollId].ended, "Poll ended");
-        require(voters.length > 0 && voters.length <= MAX_VOTERS_BATCH, "Batch size exceeds maximum limit.");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (!(block.timestamp < polls[pollId].startTime)) revert PollStarted();
+        if (polls[pollId].ended) revert PollEnded();
+        if (!(voters.length > 0 && voters.length <= MAX_VOTERS_BATCH)) revert BatchLimitExceeded();
 
         for (uint i = 0; i < voters.length; i++) {
             if (!authorizedVoters[pollId][voters[i]]) {
@@ -232,14 +233,14 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
     }
 
     function voteInPoll(uint pollId, uint optionId) public virtual {
-        require(polls[pollId].exists, "Poll does not exist.");
-        require(authorizedVoters[pollId][msg.sender], "Not authorized to vote in this poll.");
-        require(!hasVoted[pollId][msg.sender], "You have already voted.");
-        require(block.timestamp >= polls[pollId].startTime && block.timestamp < polls[pollId].endTime, "Poll not active for voting.");
-        require(optionId > 0 && optionId <= polls[pollId].optionsCount, "Invalid option.");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (!(authorizedVoters[pollId][msg.sender])) revert NotVoter();
+        if (hasVoted[pollId][msg.sender]) revert AlreadyVoted();
+        if (!(block.timestamp >= polls[pollId].startTime && block.timestamp < polls[pollId].endTime)) revert PollNotActive();
+        if (!(optionId > 0 && optionId <= polls[pollId].optionsCount)) revert InvalidOption();
 
         if (polls[pollId].tokenVotingRequired) {
-            revert("Token voting required");
+            revert TokenVotingRequired();
         }
 
         hasVoted[pollId][msg.sender] = true;
@@ -252,13 +253,13 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
     }
 
     function voteInPollWithToken(uint256 pollId, uint256 optionId, address voter) public virtual {
-        require(polls[pollId].exists, "Poll does not exist.");
-        require(polls[pollId].tokenVotingEnabled, "Token voting not enabled");
-        require(authorizedVoters[pollId][voter], "Not authorized to vote in this poll.");
-        require(!hasVoted[pollId][voter], "Already voted.");
-        require(msg.sender == voter || msg.sender == address(votingPaymaster), "Only voter or paymaster");
-        require(block.timestamp >= polls[pollId].startTime && block.timestamp < polls[pollId].endTime, "Poll not active for voting.");
-        require(optionId > 0 && optionId <= polls[pollId].optionsCount, "Invalid option.");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (!(polls[pollId].tokenVotingEnabled)) revert TokenVotingNotEnabled();
+        if (!(authorizedVoters[pollId][voter])) revert NotVoter();
+        if (hasVoted[pollId][voter]) revert AlreadyVoted();
+        if (!(msg.sender == voter || msg.sender == address(votingPaymaster))) revert Unauthorized();
+        if (!(block.timestamp >= polls[pollId].startTime && block.timestamp < polls[pollId].endTime)) revert PollNotActive();
+        if (!(optionId > 0 && optionId <= polls[pollId].optionsCount)) revert InvalidOption();
 
         // CEI: Update state BEFORE external call
         hasVoted[pollId][voter] = true;
@@ -274,9 +275,9 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
     }
 
     function revealResults(uint pollId) external {
-        require(polls[pollId].exists, "Poll does not exist.");
-        require(!polls[pollId].revealed, "Already revealed.");
-        require(block.timestamp >= polls[pollId].endTime + TIME_BUFFER, "Poll not ended");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (polls[pollId].revealed) revert PollAlreadyRevealed();
+        if (!(block.timestamp >= polls[pollId].endTime + TIME_BUFFER)) revert PollNotEnded();
 
         polls[pollId].revealed = true;
         emit ResultsRevealed(pollId);
@@ -286,8 +287,8 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
 
     // View functions
     function getVotes(uint pollId, uint optionId) external view returns (uint) {
-        require(polls[pollId].exists, "Poll does not exist.");
-        require(polls[pollId].revealed, "Results not revealed.");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (!(polls[pollId].revealed)) revert PollNotRevealed();
         return votesCount[pollId][optionId];
     }
 
@@ -296,7 +297,7 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
     }
 
     function getOption(uint pollId, uint optionId) external view returns (string memory) {
-        require(polls[pollId].exists, "Poll does not exist.");
+        if (!(polls[pollId].exists)) revert PollNotFound();
         return pollOptions[pollId][optionId];
     }
 
@@ -309,7 +310,7 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
     }
 
     function getVoterChoice(uint pollId, address voter) external view returns (uint) {
-        require(polls[pollId].revealed, "Results not revealed.");
+        if (!(polls[pollId].revealed)) revert PollNotRevealed();
         return voterChoice[pollId][voter];
     }
 
@@ -319,7 +320,7 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
     }
 
     function getWinner(uint pollId) external view returns (uint winnerId, string memory winnerName) {
-        require(polls[pollId].revealed, "Results not revealed yet.");
+        if (!(polls[pollId].revealed)) revert PollNotRevealed();
 
         uint maxVotes = 0;
         uint winningOption = 0;
@@ -345,7 +346,7 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
     }
 
     modifier onlyAdminOrOwner(uint pollId) {
-        require(msg.sender == polls[pollId].admin || msg.sender == owner(), "Only poll admin or owner allowed.");
+        if (!(msg.sender == polls[pollId].admin || msg.sender == owner())) revert Unauthorized();
         _;
     }
 

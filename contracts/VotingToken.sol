@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: LicenseRef-ANKIT-SORAL
 pragma solidity ^0.8.20;
 
+import "./VotingErrors.sol";
+
 /**
  * @title VotingToken
  * @notice ERC20-compatible token for a specific poll, burnable on vote
@@ -31,7 +33,7 @@ contract VotingToken {
     event VoteTokenBurned(address indexed voter, uint256 amount);
 
     modifier onlyTokenManager() {
-        require(msg.sender == tokenManager, "Only TokenManager can call");
+        if (!(msg.sender == tokenManager)) revert Unauthorized();
         _;
     }
 
@@ -58,8 +60,8 @@ contract VotingToken {
      * @param amount Number of tokens to mint
      */
     function mint(address to, uint256 amount) external onlyTokenManager {
-        require(to != address(0), "Invalid address");
-        require(amount > 0, "Amount must be positive");
+        if (!(to != address(0))) revert ZeroAddress();
+        if (!(amount > 0)) revert ZeroAmount();
 
         balanceOf[to] += amount;
         totalSupply += amount;
@@ -73,7 +75,7 @@ contract VotingToken {
      * @param amount Number of tokens to burn
      */
     function burn(address from, uint256 amount) external onlyTokenManager {
-        require(balanceOf[from] >= amount, "Insufficient balance");
+        if (!(balanceOf[from] >= amount)) revert InsufficientBalance();
 
         balanceOf[from] -= amount;
         totalSupply -= amount;
@@ -100,7 +102,7 @@ contract VotingToken {
      * @return bool Always reverts
      */
     function transfer(address, uint256) external pure returns (bool) {
-        revert("Voting tokens are non-transferable");
+        revert NonTransferable();
     }
 
     /**
@@ -112,9 +114,9 @@ contract VotingToken {
      * @return bool Success status
      */
     function transferFrom(address from, address to, uint256 amount) external returns (bool) {
-        require(to == address(0), "Only burning allowed");
-        require(allowance[from][msg.sender] >= amount, "Insufficient allowance");
-        require(balanceOf[from] >= amount, "Insufficient balance");
+        if (!(to == address(0))) revert OnlyBurningAllowed();
+        if (!(allowance[from][msg.sender] >= amount)) revert InsufficientAllowance();
+        if (!(balanceOf[from] >= amount)) revert InsufficientBalance();
 
         allowance[from][msg.sender] -= amount;
         balanceOf[from] -= amount;

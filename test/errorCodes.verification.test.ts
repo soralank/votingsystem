@@ -56,7 +56,7 @@ describe("Error Codes Verification", function () {
     it('should throw: "No poll"', async function () {
       await expect(
         electionsManager.getOption(999, 1)
-      ).to.be.revertedWith("No poll");
+      ).to.be.revertedWithCustomError(electionsManager, "PollNotFound");
     });
 
     it('should throw: "Dup title"', async function () {
@@ -65,7 +65,7 @@ describe("Error Codes Verification", function () {
 
       await expect(
         electionsManager.createPoll("Duplicate Title", admin.address, now + 10, 600, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
-      ).to.be.revertedWith("Dup title");
+      ).to.be.revertedWithCustomError(electionsManager, "DuplicateTitle");
     });
 
     it('should throw: "Poll started" (was: cannot add options)', async function () {
@@ -78,7 +78,7 @@ describe("Error Codes Verification", function () {
 
       await expect(
         electionsManager.connect(admin).addOptionToPoll(pollId, "Late Option")
-      ).to.be.revertedWith("Poll started");
+      ).to.be.revertedWithCustomError(electionsManager, "PollStarted");
     });
 
     it('should throw: "Poll ended; cannot vote."', async function () {
@@ -94,7 +94,7 @@ describe("Error Codes Verification", function () {
 
       await expect(
         electionsManager.connect(voter).voteInPoll(pollId, 1)
-      ).to.be.revertedWith("Not active");
+      ).to.be.revertedWithCustomError(electionsManager, "PollNotActive");
     });
 
     it('should throw: "Max options"', async function () {
@@ -110,7 +110,7 @@ describe("Error Codes Verification", function () {
 
       await expect(
         electionsManager.connect(admin).addOptionToPoll(pollId, "Option 101")
-      ).to.be.revertedWith("Max options");
+      ).to.be.revertedWithCustomError(electionsManager, "MaxOptionsReached");
     });
   });
 
@@ -130,7 +130,7 @@ describe("Error Codes Verification", function () {
 
       await expect(
         electionsManager.connect(voter).voteInPoll(pollId, 1)
-      ).to.be.revertedWith("Not voter");
+      ).to.be.revertedWithCustomError(electionsManager, "NotVoter");
     });
 
     it('should throw: "Dup voter"', async function () {
@@ -138,13 +138,13 @@ describe("Error Codes Verification", function () {
 
       await expect(
         electionsManager.connect(admin).addVoter(pollId, voter.address)
-      ).to.be.revertedWith("Dup voter");
+      ).to.be.revertedWithCustomError(electionsManager, "DuplicateVoter");
     });
 
     it('should throw: "Bad addr"', async function () {
       await expect(
         electionsManager.connect(admin).addVoter(pollId, ethers.ZeroAddress)
-      ).to.be.revertedWith("Bad addr");
+      ).to.be.revertedWithCustomError(electionsManager, "ZeroAddress");
     });
 
     it('should throw: "Batch limit"', async function () {
@@ -152,7 +152,7 @@ describe("Error Codes Verification", function () {
 
       await expect(
         electionsManager.connect(admin).addVoters(pollId, voters)
-      ).to.be.revertedWith("Batch limit");
+      ).to.be.revertedWithCustomError(electionsManager, "BatchLimitExceeded");
     });
   });
 
@@ -175,13 +175,13 @@ describe("Error Codes Verification", function () {
 
       await expect(
         electionsManager.connect(voter).voteInPoll(pollId, 1)
-      ).to.be.revertedWith("Already voted");
+      ).to.be.revertedWithCustomError(electionsManager, "AlreadyVoted");
     });
 
     it('should throw: "Invalid option."', async function () {
       await expect(
         electionsManager.connect(voter).voteInPoll(pollId, 99)
-      ).to.be.revertedWith("Invalid option.");
+      ).to.be.revertedWithCustomError(electionsManager, "InvalidOption");
     });
 
     it('should throw: "Token voting required"', async function () {
@@ -206,7 +206,7 @@ describe("Error Codes Verification", function () {
 
       await expect(
         electionsManager.connect(voter).voteInPoll(tokenPollId, 1)
-      ).to.be.revertedWith("Token voting required");
+      ).to.be.revertedWithCustomError(electionsManager, "TokenVotingRequired");
     });
   });
 
@@ -246,7 +246,7 @@ describe("Error Codes Verification", function () {
 
       await expect(
         electionsManager.connect(voter).voteInPollWithToken(pollId, 1, voter.address)
-      ).to.be.revertedWith("Insufficient tokens");
+      ).to.be.revertedWithCustomError(electionsManager, "InsufficientTokens");
     });
 
     it('should throw: "Only TokenManager can call"', async function () {
@@ -256,7 +256,7 @@ describe("Error Codes Verification", function () {
 
       await expect(
         token.connect(attacker).mint(voter.address, 10)
-      ).to.be.revertedWith("Only TokenManager can call");
+      ).to.be.revertedWithCustomError(token, "Unauthorized");
     });
 
     it('should throw: "Voting tokens are non-transferable"', async function () {
@@ -268,14 +268,14 @@ describe("Error Codes Verification", function () {
 
       await expect(
         token.connect(voter).transfer(attacker.address, 1)
-      ).to.be.revertedWith("Voting tokens are non-transferable");
+      ).to.be.revertedWithCustomError(token, "NonTransferable");
     });
 
     it('should throw: "Zero tokens"', async function () {
       // addVotersWithTokens now validates tokensPerVoter > 0 directly
       await expect(
         electionsManager.connect(admin).addVotersWithTokens(pollId, [voter.address], 0)
-      ).to.be.revertedWith("Zero tokens");
+      ).to.be.revertedWithCustomError(electionsManager, "ZeroAmount");
     });
   });
 
@@ -286,19 +286,19 @@ describe("Error Codes Verification", function () {
 
       await expect(
         votingPaymaster.verifySignature(1, 1, voter.address, expiredDeadline, 27, ethers.ZeroHash, ethers.ZeroHash)
-      ).to.be.revertedWith("Signature expired");
+      ).to.be.revertedWithCustomError(votingPaymaster, "SignatureExpired");
     });
 
     it('should throw: "Must send ETH"', async function () {
       await expect(
         votingPaymaster.fund({ value: 0 })
-      ).to.be.revertedWith("Must send ETH");
+      ).to.be.revertedWithCustomError(votingPaymaster, "MustSendETH");
     });
 
     it('should throw: "Only admin"', async function () {
       await expect(
         votingPaymaster.connect(attacker).withdraw(1)
-      ).to.be.revertedWith("Only admin");
+      ).to.be.revertedWithCustomError(votingPaymaster, "Unauthorized");
     });
   });
 
@@ -306,7 +306,7 @@ describe("Error Codes Verification", function () {
     it('should throw: "Not authorized" (createPoll)', async function () {
       await expect(
         electionsManager.connect(attacker).createPoll("Test", admin.address, Date.now() + 1000, 600, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
-      ).to.be.revertedWith("Not authorized");
+      ).to.be.revertedWithCustomError(electionsManager, "Unauthorized");
     });
 
     it('should throw: "Admin only"', async function () {
@@ -316,7 +316,7 @@ describe("Error Codes Verification", function () {
 
       await expect(
         electionsManager.connect(attacker).addOptionToPoll(pollId, "Unauthorized Option")
-      ).to.be.revertedWith("Admin only");
+      ).to.be.revertedWithCustomError(electionsManager, "Unauthorized");
     });
 
     it('should throw: "Only pending owner can accept"', async function () {
@@ -324,7 +324,7 @@ describe("Error Codes Verification", function () {
 
       await expect(
         electionsManager.connect(attacker).acceptOwnership()
-      ).to.be.revertedWith("Only pending owner can accept");
+      ).to.be.revertedWithCustomError(electionsManager, "OnlyPendingOwner");
     });
   });
 
@@ -334,7 +334,7 @@ describe("Error Codes Verification", function () {
 
       await expect(
         electionsManager.createPoll("Past Poll", admin.address, pastTime, 600, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
-      ).to.be.revertedWith("Start time cannot be in the past.");
+      ).to.be.revertedWithCustomError(electionsManager, "StartTimeInPast");
     });
 
     it('should throw: "Poll duration too short."', async function () {
@@ -342,7 +342,7 @@ describe("Error Codes Verification", function () {
 
       await expect(
         electionsManager.createPoll("Short Poll", admin.address, now + 10, 100, false, false, ethers.ZeroAddress, ethers.ZeroAddress) // < 300 seconds
-      ).to.be.revertedWith("Poll duration too short.");
+      ).to.be.revertedWithCustomError(electionsManager, "DurationTooShort");
     });
 
     it('should throw: "Start time too far in future."', async function () {
@@ -351,7 +351,7 @@ describe("Error Codes Verification", function () {
 
       await expect(
         electionsManager.createPoll("Far Future Poll", admin.address, farFuture, 600, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
-      ).to.be.revertedWith("Start time too far in future.");
+      ).to.be.revertedWithCustomError(electionsManager, "StartTimeTooFarInFuture");
     });
   });
 
@@ -361,7 +361,7 @@ describe("Error Codes Verification", function () {
 
       await expect(
         electionsManager.createPoll("Test Poll", ethers.ZeroAddress, now + 10, 600, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
-      ).to.be.revertedWith("admin zero");
+      ).to.be.revertedWithCustomError(electionsManager, "ZeroAddress");
     });
 
     it('should throw: "Empty arrays"', async function () {
@@ -374,7 +374,7 @@ describe("Error Codes Verification", function () {
       // Note: Will revert with "Empty arrays" when trying to allocate tokens
       await expect(
         electionsManager.connect(admin).addVotersWithTokens(pollId, [], 5)
-      ).to.be.revertedWith("Empty arrays"); // Will revert during batch allocation
+      ).to.be.revertedWithCustomError(electionsManager, "EmptyArray"); // Will revert during batch allocation
     });
 
     it('should throw: "Array length mismatch"', async function () {
@@ -394,7 +394,7 @@ describe("Error Codes Verification", function () {
 
       await expect(
         TokenManager.deploy(ethers.ZeroAddress)
-      ).to.be.revertedWith("Invalid voting contract");
+      ).to.be.revertedWithCustomError(electionsManager, "ZeroAddress");
     });
   });
 

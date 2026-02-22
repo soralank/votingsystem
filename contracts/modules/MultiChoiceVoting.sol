@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: LicenseRef-ANKIT-SORAL
 pragma solidity ^0.8.20;
 
+import "../VotingErrors.sol";
+
 /**
  * @title MultiChoiceVoting
  * @notice Module for multi-choice voting state management
@@ -19,7 +21,7 @@ contract MultiChoiceVoting {
     event MultiChoiceConfigured(uint indexed pollId, uint maxChoices);
 
     modifier onlyElectionsManager() {
-        require(msg.sender == electionsManager, "Only ElectionsManager");
+        if (!(msg.sender == electionsManager)) revert Unauthorized();
         _;
     }
 
@@ -34,8 +36,8 @@ contract MultiChoiceVoting {
      * @param optionsCount Current number of options in the poll
      */
     function configureMultiChoice(uint pollId, uint maxChoices, uint optionsCount) external onlyElectionsManager {
-        require(maxChoices >= 2, "Min 2 choices");
-        require(maxChoices <= optionsCount || optionsCount == 0, "Max choices exceeds option count.");
+        if (!(maxChoices >= 2)) revert MinTwoChoices();
+        if (!(maxChoices <= optionsCount || optionsCount == 0)) revert MaxChoicesExceedsOptions();
         pollMaxChoices[pollId] = maxChoices;
         emit MultiChoiceConfigured(pollId, maxChoices);
     }
@@ -55,14 +57,14 @@ contract MultiChoiceVoting {
         uint optionsCount
     ) external onlyElectionsManager {
         uint maxC = pollMaxChoices[pollId];
-        require(maxC >= 2, "Multi-choice not enabled");
-        require(optionIds.length >= 1 && optionIds.length <= maxC, "Invalid choice count");
+        if (!(maxC >= 2)) revert MultiChoiceNotEnabled();
+        if (!(optionIds.length >= 1 && optionIds.length <= maxC)) revert InvalidChoiceCount();
 
         // Validate options and check for duplicates
         for (uint i = 0; i < optionIds.length; i++) {
-            require(optionIds[i] > 0 && optionIds[i] <= optionsCount, "Invalid option.");
+            if (!(optionIds[i] > 0 && optionIds[i] <= optionsCount)) revert InvalidOption();
             for (uint j = 0; j < i; j++) {
-                require(optionIds[i] != optionIds[j], "Duplicate option in choices.");
+                if (!(optionIds[i] != optionIds[j])) revert DuplicateOption();
             }
         }
 

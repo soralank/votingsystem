@@ -1,8 +1,10 @@
-# 🚀 Deployment Guide - Blockchain Voting System v4.1
+# Deployment Guide — Voting System v4.1
 
-Complete guide for deploying the voting system smart contracts to local, Sepolia testnet, and Ethereum mainnet.
+Complete operational reference for deploying the voting system smart contracts to local, Sepolia testnet, and Ethereum mainnet environments.
 
-## 📋 Table of Contents
+---
+
+## Table of Contents
 
 - [Prerequisites](#prerequisites)
 - [Environment Setup](#environment-setup)
@@ -10,35 +12,44 @@ Complete guide for deploying the voting system smart contracts to local, Sepolia
 - [Testnet Deployment (Sepolia)](#testnet-deployment-sepolia)
 - [Mainnet Deployment](#mainnet-deployment)
 - [Post-Deployment Verification](#post-deployment-verification)
+- [Gas Cost Reference](#gas-cost-reference)
+- [Upgradeable Deployment](#upgradeable-deployment)
 - [CI/CD Pipeline](#cicd-pipeline)
+- [MetaMask Configuration](#metamask-configuration)
 - [Troubleshooting](#troubleshooting)
 
-## ✅ Prerequisites
+---
+
+## Prerequisites
 
 ### Required Software
 
+| Software | Minimum Version |
+|----------|----------------|
+| Node.js | 18.0.0 |
+| npm | 9.0.0 |
+| Git | Latest |
+
+Verify installation:
+
 ```bash
-Node.js >= 18.0.0
-npm >= 9.0.0
-Git
+node --version   # v18.0.0+
+npm --version    # 9.0.0+
 ```
 
-Check your versions:
+### Wallet Requirements
 
-```bash
-node --version  # Should be v18.0.0 or higher
-npm --version   # Should be 9.0.0 or higher
-```
+| Network | Funding |
+|---------|---------|
+| **Local (Hardhat)** | Free — 20 test accounts with 10,000 ETH each |
+| **Sepolia Testnet** | Free — obtained from faucets (0.5–1 ETH recommended) |
+| **Mainnet** | Real ETH — minimum 0.2 ETH for deployment; hardware wallet recommended |
 
-### Funded Wallet
+---
 
-- **Local**: Free (Hardhat provides test accounts with 10,000 ETH each)
-- **Testnet**: Free Sepolia ETH from faucets
-- **Mainnet**: Real ETH (~0.1-0.2 ETH recommended for full deployment)
+## Environment Setup
 
-## 🔧 Environment Setup
-
-### Step 1: Clone and Install
+### Step 1 — Clone and Install
 
 ```bash
 git clone https://github.com/soralank/votingsystem.git
@@ -47,7 +58,7 @@ npm install
 npx hardhat compile
 ```
 
-### Step 2: Create Environment File
+### Step 2 — Create Environment File
 
 Create `.env` in the project root:
 
@@ -56,60 +67,63 @@ Create `.env` in the project root:
 SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/YOUR_INFURA_API_KEY
 MAINNET_RPC_URL=https://mainnet.infura.io/v3/YOUR_INFURA_API_KEY
 
-# Private Keys (NEVER commit these!)
+# Private Keys (NEVER commit these)
 SEPOLIA_PRIVATE_KEY=your_sepolia_private_key_here
 MAINNET_PRIVATE_KEY=your_mainnet_private_key_here
 
-# Optional: Etherscan API Key (for contract verification)
+# Etherscan API Key (for contract verification)
 ETHERSCAN_API_KEY=your_etherscan_api_key_here
 ```
 
-⚠️ **Security Warning**: Add `.env` to `.gitignore`!
+> **Security**: Ensure `.env` is listed in `.gitignore`. Never commit private keys to version control.
 
-### Step 3: Get API Keys
+### Step 3 — Obtain API Keys
 
-**RPC URLs** (choose one):
-- [Infura](https://infura.io/) — Create project → copy API key
-- [Alchemy](https://www.alchemy.com/) — Create app → copy HTTPS URL
+**RPC Providers** (choose one):
+- [Infura](https://infura.io/) — Create project, copy API key
+- [Alchemy](https://www.alchemy.com/) — Create app, copy HTTPS URL
 
-**Etherscan API Key** (for contract verification):
-- [etherscan.io](https://etherscan.io/) → Sign up → API Keys → Create key
+**Etherscan** (for contract verification):
+- [etherscan.io](https://etherscan.io/) — Register, navigate to API Keys, create key
 
-### Step 4: Get Test ETH (Sepolia)
+### Step 4 — Obtain Test ETH (Sepolia)
 
 - [Sepolia Faucet](https://sepoliafaucet.com/)
 - [Alchemy Faucet](https://www.alchemy.com/faucets/ethereum-sepolia)
 - [Infura Faucet](https://www.infura.io/faucet/sepolia)
 
-Request 0.5-1 ETH (sufficient for multiple deployments).
+Request 0.5–1 ETH, sufficient for multiple deployments.
 
-## 🏠 Local Development Deployment
+---
 
-### Step 1: Start Local Hardhat Network
+## Local Development Deployment
+
+### Step 1 — Start Local Network
 
 ```bash
 npx hardhat node
 ```
 
-Keep this terminal running. You'll see 20 test accounts with 10,000 ETH each.
+Keep this terminal running. The console will display 20 test accounts with pre-funded balances.
 
-### Step 2: Deploy All Contracts
+### Step 2 — Deploy All Contracts
 
-In a **new terminal**:
+In a separate terminal:
 
 ```bash
 npx hardhat ignition deploy ignition/modules/GaslessVoting.ts --network localhost
 ```
 
-This deploys and auto-configures:
-1. **ElectionsManager** — Main voting contract with trust features
-2. **TokenManager** — Per-poll token factory (linked to ElectionsManager)
-3. **VotingPaymaster** — Gas sponsor (linked + funded with 1 ETH)
-4. **SecretBallotManager** — Commit-reveal voting (linked to ElectionsManager)
+The deployment module automatically:
+1. Deploys **ElectionsManager** (which auto-deploys 4 module contracts in its constructor)
+2. Deploys **TokenManager** and links it to ElectionsManager
+3. Deploys **VotingPaymaster**, links it to ElectionsManager, and funds it with 1 ETH
+4. Deploys **SecretBallotManager** and links it to ElectionsManager
 
 Expected output:
+
 ```
-Hardhat Ignition 🚀
+Hardhat Ignition
 
 Deploying [ GaslessVotingModule ]
 
@@ -125,7 +139,7 @@ Batch #2
   Executed GaslessVotingModule#ElectionsManager.setSecretBallotManager
   Executed GaslessVotingModule#VotingPaymaster.fund
 
-[ GaslessVotingModule ] successfully deployed 🚀
+[ GaslessVotingModule ] successfully deployed
 
 Deployed Addresses
 GaslessVotingModule#ElectionsManager - 0x...
@@ -134,44 +148,36 @@ GaslessVotingModule#VotingPaymaster - 0x...
 GaslessVotingModule#SecretBallotManager - 0x...
 ```
 
-**Save all 4 deployed addresses!**
+Record all four deployed addresses.
 
-### Step 3: Verify Deployment
-
-```bash
-npx hardhat run scripts/check-contract-state.js --network localhost
-```
-
-Or use Hardhat console:
-
-```bash
-npx hardhat console --network localhost
-```
+### Step 3 — Verify Deployment
 
 ```javascript
-const EM = await ethers.getContractFactory("ElectionsManager");
-const em = await EM.attach("YOUR_ELECTIONS_MANAGER_ADDRESS");
+// Via Hardhat console: npx hardhat console --network localhost
+const em = await ethers.getContractAt("ElectionsManager", "YOUR_ADDRESS");
 
-const owner = await em.owner();
-console.log("Owner:", owner);
-
-const locked = await em.infrastructureLocked();
-console.log("Infrastructure locked:", locked);  // false (until first poll)
+console.log("Owner:", await em.owner());
+console.log("Infrastructure locked:", await em.infrastructureLocked());  // false until first poll
+console.log("TokenManager:", await em.tokenManager());
+console.log("VotingPaymaster:", await em.votingPaymaster());
+console.log("SecretBallotMgr:", await em.secretBallotMgr());
 ```
 
-### Step 4: Test Locally
+### Step 4 — Run Tests
 
 ```bash
 npx hardhat test
 ```
 
-All 396 tests should pass.
+All 396 tests across 12 suites should pass with 100% success rate.
 
-## 🌐 Testnet Deployment (Sepolia)
+---
 
-### Step 1: Verify Configuration
+## Testnet Deployment (Sepolia)
 
-Confirm `hardhat.config.ts` has the Sepolia network:
+### Step 1 — Verify Configuration
+
+Confirm `hardhat.config.ts` contains the Sepolia network definition:
 
 ```typescript
 networks: {
@@ -184,109 +190,74 @@ networks: {
 }
 ```
 
-### Step 2: Check Balance
+### Step 2 — Verify Wallet Balance
 
-Ensure your wallet has sufficient Sepolia ETH (>0.1 ETH recommended).
+Ensure the deployer wallet holds at least 0.1 ETH on Sepolia.
 
-### Step 3: Deploy to Sepolia
+### Step 3 — Deploy
 
 ```bash
 npx hardhat ignition deploy ignition/modules/GaslessVoting.ts --network sepolia
 ```
 
-### Step 4: Verify on Etherscan
+### Step 4 — Verify Contracts on Etherscan
 
-Verify each contract on Etherscan for transparency:
+Verify each contract for source code transparency:
 
 ```bash
-# ElectionsManager (no constructor args)
+# ElectionsManager (no constructor arguments)
 npx hardhat verify --network sepolia ELECTIONS_MANAGER_ADDRESS
 
-# SecretBallotManager (constructor arg: electionsManager address)
+# SecretBallotManager (constructor arg: ElectionsManager address)
 npx hardhat verify --network sepolia SECRET_BALLOT_MANAGER_ADDRESS ELECTIONS_MANAGER_ADDRESS
 
-# TokenManager (constructor arg: electionsManager address)
+# TokenManager (constructor arg: ElectionsManager address)
 npx hardhat verify --network sepolia TOKEN_MANAGER_ADDRESS ELECTIONS_MANAGER_ADDRESS
 
-# VotingPaymaster (constructor args: electionsManager, tokenManager, admin)
+# VotingPaymaster (constructor args: ElectionsManager, TokenManager, admin)
 npx hardhat verify --network sepolia VOTING_PAYMASTER_ADDRESS ELECTIONS_MANAGER_ADDRESS TOKEN_MANAGER_ADDRESS DEPLOYER_ADDRESS
 ```
 
-### Step 5: Test on Sepolia
-
-```bash
-npx hardhat console --network sepolia
-```
+### Step 5 — Smoke Test
 
 ```javascript
 const em = await ethers.getContractAt("ElectionsManager", "YOUR_ADDRESS");
-const owner = await em.owner();
-console.log("Owner:", owner);
+console.log("Owner:", await em.owner());
 console.log("Locked:", await em.infrastructureLocked());
 ```
 
-## 🔴 Mainnet Deployment
+---
 
-⚠️ **DANGER ZONE**: Real money involved!
+## Mainnet Deployment
+
+> **Warning**: Mainnet deployment involves real funds. Follow the checklist below without exception.
 
 ### Pre-Deployment Checklist
 
-- [ ] All 396 tests passing
-- [ ] Tested on Sepolia testnet successfully
-- [ ] Gas costs estimated and acceptable
+- [ ] All 396 tests passing locally
+- [ ] Successfully deployed and tested on Sepolia
+- [ ] Gas cost estimates reviewed and acceptable
 - [ ] Private keys secured (hardware wallet recommended)
-- [ ] At least 0.2 ETH in deployer wallet
-- [ ] Documentation reviewed
-- [ ] Emergency plan ready (two-step ownership transfer, upgradeable path)
+- [ ] Deployer wallet holds at least 0.2 ETH
+- [ ] Emergency ownership transfer plan prepared (two-step transfer, multisig path)
+- [ ] All documentation reviewed
 
-### Step 1: Verify Configuration
-
-Confirm `hardhat.config.ts` has the mainnet network:
-
-```typescript
-networks: {
-  mainnet: {
-    type: "http",
-    chainType: "l1",
-    url: configVariable("MAINNET_RPC_URL"),
-    accounts: [configVariable("MAINNET_PRIVATE_KEY")],
-  },
-}
-```
-
-### Step 2: Run Full Test Suite
+### Step 1 — Full Test Suite
 
 ```bash
 npx hardhat test
 REPORT_GAS=true npx hardhat test
 ```
 
-All 396 tests must pass with 100% success rate.
+100% pass rate required.
 
-### Step 3: Estimate Costs
-
-At 50 gwei gas price and $2,000/ETH:
-
-| Contract | Estimated Gas | Estimated Cost |
-|----------|---------------|----------------|
-| ElectionsManager | ~2,800,000 | ~$280 |
-| TokenManager | ~1,500,000 | ~$150 |
-| VotingPaymaster | ~1,200,000 | ~$120 |
-| SecretBallotManager | ~800,000 | ~$80 |
-| FranchiseManager | ~600,000 | ~$60 |
-| Configuration txs | ~300,000 | ~$30 |
-| Paymaster funding | 1 ETH | $2,000 |
-| **Total** | | **~$2,660** |
-
-Check current gas prices: [etherscan.io/gastracker](https://etherscan.io/gastracker)
-
-### Step 4: Deploy to Mainnet
+### Step 2 — Deploy
 
 ```bash
 npx hardhat ignition deploy ignition/modules/GaslessVoting.ts --network mainnet
 ```
 
-### Step 5: Verify on Etherscan
+### Step 3 — Verify on Etherscan
 
 ```bash
 npx hardhat verify --network mainnet ELECTIONS_MANAGER_ADDRESS
@@ -295,52 +266,109 @@ npx hardhat verify --network mainnet TOKEN_MANAGER_ADDRESS ELECTIONS_MANAGER_ADD
 npx hardhat verify --network mainnet VOTING_PAYMASTER_ADDRESS ELECTIONS_MANAGER_ADDRESS TOKEN_MANAGER_ADDRESS DEPLOYER_ADDRESS
 ```
 
-### Step 6: Post-Deployment Actions
+### Step 4 — Post-Deployment Actions
 
-1. **Verify all contracts** on Etherscan
-2. **Test a small poll** to confirm everything works
-3. **Transfer ownership** to a multisig if needed:
+1. Verify all contracts on Etherscan
+2. Execute a test poll to confirm end-to-end functionality
+3. Transfer ownership to a multisig if appropriate:
    ```javascript
    await em.transferOwnership("MULTISIG_ADDRESS");
-   // Then from multisig:
+   // From the multisig:
    await em.acceptOwnership();
    ```
-4. **Note**: After creating the first poll, infrastructure is **permanently locked** — TokenManager, VotingPaymaster, SecretBallotManager, and FranchiseManager addresses cannot be changed.
+4. After the first poll is created, infrastructure is **permanently locked** — TokenManager, VotingPaymaster, SecretBallotManager, and FranchiseManager addresses become immutable
 
-## 📋 Post-Deployment Verification
+---
 
-After deploying to any network, verify:
+## Post-Deployment Verification
+
+After deploying to any network, verify the full contract graph:
 
 ```javascript
 const em = await ethers.getContractAt("ElectionsManager", EM_ADDRESS);
 
-// 1. Check owner
+// Ownership
 console.log("Owner:", await em.owner());
 
-// 2. Check linked contracts
+// Linked infrastructure contracts
 console.log("TokenManager:", await em.tokenManager());
 console.log("VotingPaymaster:", await em.votingPaymaster());
 console.log("SecretBallotMgr:", await em.secretBallotMgr());
 console.log("FranchiseManager:", await em.franchiseMgr());
 
-// 2b. Check module contracts (auto-deployed)
+// Auto-deployed module contracts
 console.log("MultiChoiceVoting:", await em.multiChoiceVoting());
 console.log("QuadraticVoting:", await em.quadraticVoting());
 console.log("DelegationVoting:", await em.delegationVoting());
 console.log("MetadataVoting:", await em.metadataVoting());
 
-// 3. Check infrastructure lock status
+// Infrastructure lock status
 console.log("Locked:", await em.infrastructureLocked());
 
-// 4. Check paymaster balance
+// Paymaster balance
 const pm = await ethers.getContractAt("VotingPaymaster", PM_ADDRESS);
 const balance = await ethers.provider.getBalance(PM_ADDRESS);
 console.log("Paymaster balance:", ethers.formatEther(balance), "ETH");
 ```
 
-## 🔄 Upgradeable Deployment (Optional)
+---
 
-For production use with upgrade capability:
+## Gas Cost Reference
+
+### Deployment Gas
+
+| Contract | Estimated Gas | Notes |
+|----------|---------------|-------|
+| ElectionsManager | ~2,800,000 | Main contract (23,932 bytes, near 24 KB limit) |
+| TokenManager | ~1,500,000 | Per-poll token factory |
+| VotingPaymaster | ~1,200,000 | Gas sponsorship contract |
+| SecretBallotManager | ~800,000 | Commit-reveal contract |
+| FranchiseManager | ~600,000 | Franchise sub-admin system |
+| Configuration txs | ~300,000 | setTokenManager, setVotingPaymaster, setSecretBallotManager |
+
+### Per-Function Gas
+
+| Function | Estimated Gas | Notes |
+|----------|---------------|-------|
+| `createPoll()` | ~200,000 | Locks infrastructure on first call |
+| `createPoll()` (with tokens) | ~1,000,000 | Includes per-poll token deployment |
+| `addOptionToPoll()` | ~80,000 | Per option |
+| `addVoter()` | ~50,000 | Single voter |
+| `addVoters()` (batch 10) | ~200,000 | Batch authorisation |
+| `addVotersWithTokens()` (10) | ~350,000 | Authorise + allocate tokens |
+| `voteInPoll()` | ~70,000 | Traditional vote |
+| `voteInPollWithToken()` | ~120,000 | Token burn included |
+| `voteMultiChoice()` (3 choices) | ~140,000 | Multi-choice vote |
+| `voteQuadratic()` | ~150,000 | Quadratic vote |
+| `voteAsDelegate()` | ~100,000 | Delegation vote |
+| `commitVote()` | ~80,000 | Secret ballot hash commitment |
+| `commitVoteWithToken()` | ~130,000 | Commit + token burn |
+| `revealVote()` | ~100,000 | Hash verification + callback |
+| `revealResults()` | ~50,000 | Democratic reveal (anyone) |
+| `transferOwnership()` | ~35,000 | Initiate two-step transfer |
+| `acceptOwnership()` | ~30,000 | Accept ownership |
+| View functions | 0 | Read-only, no transaction required |
+
+### Typical Scenario Costs
+
+At 50 gwei gas price and $2,000/ETH:
+
+| Scenario | Total Gas | Estimated USD |
+|----------|-----------|---------------|
+| Small poll: 3 options, 10 voters, 10 votes | ~1,000,000 | ~$100 |
+| Medium poll: 5 options, 50 voters, 50 votes | ~4,000,000 | ~$400 |
+| Large poll: 10 options, 100 voters, 100 votes | ~12,500,000 | ~$1,250 |
+| Secret ballot overhead per voter | +~180,000 | +~$18 |
+
+Check live gas prices: [etherscan.io/gastracker](https://etherscan.io/gastracker)
+
+> **Notes**: Batch operations (`addVoters`, `addVotersWithTokens`) are more gas-efficient than individual calls. Optimizer is configured at 100 runs with `viaIR: true` for contract size optimisation.
+
+---
+
+## Upgradeable Deployment
+
+For deployments requiring post-deployment upgrade capability:
 
 ### Initial Deployment (V1)
 
@@ -348,11 +376,7 @@ For production use with upgrade capability:
 npx hardhat ignition deploy ignition/modules/UpgradeableVoting.ts --network <network>
 ```
 
-Deploys:
-- ERC1967Proxy (your permanent address)
-- ElectionsManagerUpgradeable V1 (implementation)
-- TokenManager
-- VotingPaymaster
+Deploys an ERC1967 proxy pointing to the ElectionsManagerUpgradeable V1 implementation, plus TokenManager and VotingPaymaster. The proxy address is your permanent contract address.
 
 ### Upgrade to V2
 
@@ -362,62 +386,77 @@ npx hardhat ignition deploy ignition/modules/UpgradeToV2.ts \
   --network <network>
 ```
 
-See [docs/UPGRADEABLE_MODULE.md](./docs/UPGRADEABLE_MODULE.md) for the full upgrade guide.
+All existing data is preserved across upgrades. Users continue interacting with the same proxy address.
 
-## 🔧 CI/CD Pipeline
+See [docs/UPGRADEABLE_MODULE.md](./docs/UPGRADEABLE_MODULE.md) for the complete upgrade guide including storage layout rules, safety features, and rollback procedures.
 
-The project includes a GitHub Actions CI/CD pipeline (`.github/workflows/ci.yml`) that runs on every push and PR to `main` and `develop` branches.
+---
 
-### Pipeline Jobs
+## CI/CD Pipeline
+
+The project includes a GitHub Actions pipeline (`.github/workflows/ci.yml`) executing on every push and pull request to `main` and `develop`.
 
 | Job | Description |
 |-----|-------------|
-| **Compile** | Compiles all Solidity contracts, checks sizes |
-| **Test** | Runs all 396 tests + gas reporting |
-| **Slither** | Static security analysis (Slither) |
-| **Deploy Check** | Verifies all ignition deployment modules exist |
+| **Compile** | Compiles all Solidity contracts, validates sizes |
+| **Test** | Runs full 396-test suite with gas reporting |
+| **Slither** | Static security analysis |
+| **Deploy Check** | Verifies all Ignition deployment modules are valid |
 
 ### Running CI Locally
 
 ```bash
-# Same steps as CI pipeline
 npx hardhat compile
 npx hardhat test
 REPORT_GAS=true npx hardhat test
 ```
 
-### Deployment Commands Summary
+---
 
-| Network | Command |
-|---------|---------|
-| **Local** | `npx hardhat ignition deploy ignition/modules/GaslessVoting.ts --network localhost` |
-| **Sepolia** | `npx hardhat ignition deploy ignition/modules/GaslessVoting.ts --network sepolia` |
-| **Mainnet** | `npx hardhat ignition deploy ignition/modules/GaslessVoting.ts --network mainnet` |
-| **Upgradeable** | `npx hardhat ignition deploy ignition/modules/UpgradeableVoting.ts --network <network>` |
+## MetaMask Configuration
 
-## 🔧 Troubleshooting
+### Local Network (Hardhat)
 
-### Common Issues
+| Setting | Value |
+|---------|-------|
+| Network Name | Hardhat Local |
+| RPC URL | `http://127.0.0.1:8545` |
+| Chain ID | 31337 |
+| Currency Symbol | ETH |
 
-| Issue | Solution |
-|-------|----------|
-| "Insufficient funds for gas" | Get testnet ETH from faucet, or add more mainnet ETH |
-| "Nonce too high" | Reset MetaMask: Settings → Advanced → Clear activity data |
-| "Transaction underpriced" | Increase gas price in hardhat.config.ts or wait for lower gas |
-| "Contract size exceeds limit" | Optimizer is already configured (100 runs, viaIR). Don't add code. |
-| "Verification failed" | Ensure constructor args match exactly. Try manual verification on Etherscan. |
-| "Infra locked" | Infrastructure is permanently locked after first poll — this is by design. |
-| Connection refused | Ensure `npx hardhat node` is running for localhost. Check RPC URL for testnets. |
+Import a test account private key from Hardhat node output to fund your local wallet.
 
-### Getting Help
+### Sepolia
 
-1. Check [Hardhat Documentation](https://hardhat.org/docs)
-2. Search [GitHub Issues](https://github.com/soralank/votingsystem/issues)
-3. Review [ARCHITECTURE.md](./ARCHITECTURE.md) for technical details
-4. Review [docs/ERROR_CODES.md](./docs/ERROR_CODES.md) for error messages
+Sepolia is included in MetaMask by default. Select it from the network dropdown.
+
+### Mainnet
+
+Ethereum Mainnet is the MetaMask default network.
 
 ---
 
-**Version**: 4.1.0
-**Networks**: Local (Hardhat) | Sepolia | Mainnet
-**Contracts Deployed**: 5 explicit (ElectionsManager, TokenManager, VotingPaymaster, SecretBallotManager, FranchiseManager) + 4 auto-deployed modules (MultiChoiceVoting, QuadraticVoting, DelegationVoting, MetadataVoting)
+## Troubleshooting
+
+| Issue | Resolution |
+|-------|------------|
+| "Insufficient funds for gas" | Obtain testnet ETH from a faucet, or add mainnet ETH |
+| "Nonce too high" | Reset MetaMask: Settings → Advanced → Clear activity data |
+| "Transaction underpriced" | Increase gas price or wait for lower network congestion |
+| "Contract size exceeds limit" | Optimizer is already configured (100 runs, viaIR). Do not add code to ElectionsManager without factoring to modules |
+| "Verification failed" | Ensure constructor arguments match exactly. Attempt manual verification on Etherscan |
+| "Infra locked" | Infrastructure is permanently locked after the first poll is created. This is by design |
+| Connection refused | Ensure `npx hardhat node` is running for localhost; verify RPC URL for remote networks |
+
+### Getting Help
+
+1. [Hardhat Documentation](https://hardhat.org/docs)
+2. [ARCHITECTURE.md](./ARCHITECTURE.md) — Design intent, threat model, attack classification, governance hardening (upgrade risk matrix, emergency migration), operational playbooks, monitoring guide (Grafana/Graph queries), formal verification roadmap, threat simulation appendix
+3. [docs/ERROR_CODES.md](./docs/ERROR_CODES.md) — All 56+ error messages with frontend handling guidance
+
+---
+
+**Version**: 4.1.0  
+**Networks**: Local (Hardhat) | Sepolia | Mainnet  
+**Contracts Deployed**: 5 explicit + 4 auto-deployed modules  
+**Last Updated**: 2026-02-22

@@ -1,7 +1,8 @@
 # Frontend Integration Guide — Voting System v4.1
-# Contact: ankit.soral@outlook.com
 
-Complete guide for frontend developers to integrate with the blockchain voting system smart contracts.
+Contact: ankit.soral@outlook.com
+
+Authoritative integration reference for frontend developers interfacing with the voting system smart contracts. Covers all user flows, contract ABIs, event subscriptions, and access control semantics.
 
 ---
 
@@ -771,25 +772,25 @@ await electionsManager.createPoll(title, admin, start, dur, true, false,
 
 ### Common Revert Reasons
 
-| Error Message | Cause | Solution |
-|---------------|-------|----------|
-| `"Not authorized"` | Caller is not owner/franchiseMgr | Use owner account |
-| `"admin zero"` | Zero address passed as admin | Pass valid address |
-| `"Poll title already exists."` | Duplicate poll title | Use unique title |
-| `"Poll does not exist."` | Invalid pollId | Check `pollsCount` |
-| `"Poll started"` | Changing config after start | Configure before start |
-| `"Poll not active for voting."` | Voting outside window | Check `isPollActive()` |
-| `"Not authorized to vote in this poll."` | Voter not authorized | Use `addVoter()` first |
-| `"Already voted."` | Double voting attempt | Check `hasVoterVoted()` |
-| `"Invalid option."` | optionId out of range | 1 to `optionsCount` |
-| `"Secret ballot: use SBM"` | Direct vote on secret poll | Use SecretBallotManager |
-| `"Infra locked"` | Changing config after lock | Cannot change after first poll |
-| `"Token voting not enabled"` | Token vote on non-token poll | Enable in `createPoll()` |
-| `"Insufficient tokens"` | No tokens for voting | Allocate tokens first |
-| `"Voter has delegated their vote."` | Delegated voter trying to vote | Remove delegation first |
-| `"Poll not revealed"` | Reading results before reveal | Call `revealResults()` first |
-| `"Invalid signature"` | Bad gasless vote signature | Check EIP-712 params |
-| `"Deadline expired."` | Gasless vote deadline passed | Use fresh deadline |
+| Custom Error | Cause | Solution |
+|--------------|-------|----------|
+| `Unauthorized` | Caller is not owner/admin/franchiseMgr | Use authorized account |
+| `ZeroAddress` | Zero address passed as admin/voter | Pass valid address |
+| `DuplicateTitle` | Duplicate poll title | Use unique title |
+| `PollNotFound` | Invalid pollId | Check `pollsCount` |
+| `PollStarted` | Changing config after start | Configure before start |
+| `PollNotActive` | Voting outside window | Check `isPollActive()` |
+| `NotVoter` | Voter not authorized | Use `addVoter()` first |
+| `AlreadyVoted` | Double voting attempt | Check `hasVoterVoted()` |
+| `InvalidOption` | optionId out of range | 1 to `optionsCount` |
+| `SecretPoll` | Direct vote on secret poll | Use SecretBallotManager |
+| `InfraLocked` | Changing config after lock | Cannot change after first poll |
+| `TokenVotingNotEnabled` | Token vote on non-token poll | Enable in `createPoll()` |
+| `InsufficientTokens` | No tokens for voting | Allocate tokens first |
+| `VoteIsDelegated` | Delegated voter trying to vote | Remove delegation first |
+| `PollNotRevealed` | Reading results before reveal | Call `revealResults()` first |
+| `InvalidSignature` | Bad gasless vote signature | Check EIP-712 params |
+| `SignatureExpired` | Gasless vote deadline passed | Use fresh deadline |
 
 ### Error Handling Pattern
 
@@ -798,19 +799,27 @@ try {
   const tx = await electionsManager.connect(voter).voteInPoll(pollId, optionId);
   await tx.wait();
 } catch (error) {
-  // Parse revert reason
-  const reason = error.reason || error.message;
+  // ethers.js v6 parses custom errors automatically
+  const errorName = error.revert?.name || error.errorName;
 
-  if (reason.includes("Already voted")) {
-    showError("You have already voted in this poll");
-  } else if (reason.includes("Not authorized")) {
-    showError("You are not authorized to vote in this poll");
-  } else if (reason.includes("Poll not active")) {
-    showError("This poll is not currently accepting votes");
-  } else if (reason.includes("Secret ballot")) {
-    showError("This poll uses secret ballot — use the commit-reveal flow");
-  } else {
-    showError(`Transaction failed: ${reason}`);
+  switch (errorName) {
+    case "AlreadyVoted":
+      showError("You have already voted in this poll");
+      break;
+    case "NotVoter":
+      showError("You are not authorized to vote in this poll");
+      break;
+    case "PollNotActive":
+      showError("This poll is not currently accepting votes");
+      break;
+    case "SecretPoll":
+      showError("This poll uses secret ballot — use the commit-reveal flow");
+      break;
+    case "TokenVotingRequired":
+      showError("This poll requires token-based voting");
+      break;
+    default:
+      showError(`Transaction failed: ${errorName}`);
   }
 }
 ```
@@ -1092,8 +1101,8 @@ If The Graph subgraph is deployed, you can query:
 
 ---
 
-**Version**: 4.1.0
-**Last Updated**: 2026-02-14
-**Solidity**: ^0.8.20 (compiled with 0.8.28)
-**Hardhat**: 3.1.3+
+**Version**: 4.1.0  
+**Last Updated**: 2026-02-22  
+**Solidity**: 0.8.28  
+**Hardhat**: 3.1.3  
 **ethers.js**: v6

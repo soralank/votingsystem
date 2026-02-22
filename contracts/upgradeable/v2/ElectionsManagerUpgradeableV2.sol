@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import "../v1/ElectionsManagerUpgradeable.sol";
+import "../../VotingErrors.sol";
 
 /**
  * @title ElectionsManagerUpgradeable V2
@@ -30,33 +31,33 @@ contract ElectionsManagerUpgradeableV2 is ElectionsManagerUpgradeable {
     }
 
     function setPollCategory(uint pollId, string calldata category) external onlyAdminOrOwner(pollId) {
-        require(polls[pollId].exists, "Poll does not exist.");
+        if (!(polls[pollId].exists)) revert PollNotFound();
         pollCategories[pollId] = category;
         emit PollCategorized(pollId, category);
     }
 
     function setVoteWeight(uint pollId, address voter, uint weight) external onlyAdminOrOwner(pollId) {
-        require(polls[pollId].exists, "Poll does not exist.");
-        require(block.timestamp < polls[pollId].startTime, "Cannot set weight after poll starts");
-        require(weight > 0 && weight <= 10, "Weight must be between 1 and 10");
-        require(authorizedVoters[pollId][voter], "Voter not authorized");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (!(block.timestamp < polls[pollId].startTime)) revert PollStarted();
+        if (!(weight > 0 && weight <= 10)) revert WeightOutOfRange();
+        if (!(authorizedVoters[pollId][voter])) revert NotVoter();
 
         voteWeight[pollId][voter] = weight;
         emit VoteWeightSet(pollId, voter, weight);
     }
 
     function pausePoll(uint pollId) external onlyAdminOrOwner(pollId) {
-        require(polls[pollId].exists, "Poll does not exist.");
-        require(block.timestamp < polls[pollId].endTime + 30, "Poll already ended");
-        require(!pollPaused[pollId], "Poll already paused");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (!(block.timestamp < polls[pollId].endTime + 30)) revert PollEnded();
+        if (pollPaused[pollId]) revert PollIsPaused();
 
         pollPaused[pollId] = true;
         emit PollPaused(pollId);
     }
 
     function unpausePoll(uint pollId) external onlyAdminOrOwner(pollId) {
-        require(polls[pollId].exists, "Poll does not exist.");
-        require(pollPaused[pollId], "Poll not paused");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (!(pollPaused[pollId])) revert PollNotPaused();
 
         pollPaused[pollId] = false;
         emit PollUnpaused(pollId);
@@ -68,13 +69,13 @@ contract ElectionsManagerUpgradeableV2 is ElectionsManagerUpgradeable {
      * @param count Number of authorized voters
      */
     function setAuthorizedVoterCount(uint pollId, uint count) external onlyAdminOrOwner(pollId) {
-        require(polls[pollId].exists, "Poll does not exist.");
+        if (!(polls[pollId].exists)) revert PollNotFound();
         authorizedVoterCount[pollId] = count;
         emit VoterCountUpdated(pollId, count);
     }
 
     function voteInPoll(uint pollId, uint optionId) public override {
-        require(!pollPaused[pollId], "Poll is paused");
+        if (pollPaused[pollId]) revert PollIsPaused();
         super.voteInPoll(pollId, optionId);
 
         uint weight = voteWeight[pollId][msg.sender];
@@ -90,7 +91,7 @@ contract ElectionsManagerUpgradeableV2 is ElectionsManagerUpgradeable {
      * @notice Override token voting to enforce pause and apply vote weight (M-2/M-7 fix)
      */
     function voteInPollWithToken(uint256 pollId, uint256 optionId, address voter) public override {
-        require(!pollPaused[pollId], "Poll is paused");
+        if (pollPaused[pollId]) revert PollIsPaused();
         super.voteInPollWithToken(pollId, optionId, voter);
 
         // Apply vote weight multiplier (same as voteInPoll)
@@ -104,15 +105,15 @@ contract ElectionsManagerUpgradeableV2 is ElectionsManagerUpgradeable {
     }
 
     function getParticipationRate(uint pollId) external view returns (uint rate) {
-        require(polls[pollId].exists, "Poll does not exist.");
+        if (!(polls[pollId].exists)) revert PollNotFound();
         uint totalAuthorized = authorizedVoterCount[pollId];
         if (totalAuthorized == 0) return 0;
         return (polls[pollId].totalVotes * 100) / totalAuthorized;
     }
 
     function getVoteDiversity(uint pollId) public view returns (uint diversity) {
-        require(polls[pollId].exists, "Poll does not exist.");
-        require(polls[pollId].revealed, "Results not revealed");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (!(polls[pollId].revealed)) revert PollNotRevealed();
         return _calcDiversity(pollId);
     }
 
@@ -136,7 +137,7 @@ contract ElectionsManagerUpgradeableV2 is ElectionsManagerUpgradeable {
         uint diversity,
         bool isPaused
     ) {
-        require(polls[pollId].exists, "Poll does not exist.");
+        if (!(polls[pollId].exists)) revert PollNotFound();
 
         totalVotes = polls[pollId].totalVotes;
 

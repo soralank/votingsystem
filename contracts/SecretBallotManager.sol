@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: LicenseRef-ANKIT-SORAL
 pragma solidity ^0.8.20;
 
+import "./VotingErrors.sol";
+
 /**
  * @title IElectionsManager
  * @notice Minimal interface for SecretBallotManager to interact with ElectionsManager
@@ -79,21 +81,18 @@ contract SecretBallotManager {
 
     // ── Modifiers ────────────────────────────────────────────────
     modifier onlyOwner() {
-        require(msg.sender == owner, "Only owner");
+        if (!(msg.sender == owner)) revert Unauthorized();
         _;
     }
 
     modifier onlyOwnerOrElectionsManager() {
-        require(
-            msg.sender == owner || msg.sender == address(electionsManager),
-            "Only owner or EM"
-        );
+        if (!(msg.sender == owner || msg.sender == address(electionsManager))) revert Unauthorized();
         _;
     }
 
     // ── Constructor ──────────────────────────────────────────────
     constructor(address _electionsManager) {
-        require(_electionsManager != address(0), "Invalid address");
+        if (!(_electionsManager != address(0))) revert ZeroAddress();
         electionsManager = IElectionsManager(_electionsManager);
         owner = msg.sender;
     }
@@ -112,8 +111,8 @@ contract SecretBallotManager {
      * @param newOwner Address of the new owner
      */
     function transferOwnership(address newOwner) external onlyOwner {
-        require(newOwner != address(0), "Invalid address");
-        require(newOwner != owner, "Already owner");
+        if (!(newOwner != address(0))) revert ZeroAddress();
+        if (!(newOwner != owner)) revert SameAddress();
         pendingOwner = newOwner;
         emit OwnershipTransferStarted(owner, newOwner);
     }
@@ -122,7 +121,7 @@ contract SecretBallotManager {
      * @notice Accept pending ownership transfer
      */
     function acceptOwnership() external {
-        require(msg.sender == pendingOwner, "Only pending owner");
+        if (!(msg.sender == pendingOwner)) revert OnlyPendingOwner();
         address prev = owner;
         owner = pendingOwner;
         pendingOwner = address(0);
@@ -136,7 +135,7 @@ contract SecretBallotManager {
      * @param duration Duration in seconds (minimum 1 minute)
      */
     function setDefaultRevealDuration(uint duration) external onlyOwnerOrElectionsManager {
-        require(duration >= MIN_REVEAL_DURATION, "Reveal duration too short");
+        if (!(duration >= MIN_REVEAL_DURATION)) revert RevealDurationTooShort();
         uint oldDuration = defaultRevealDuration;
         defaultRevealDuration = duration;
         emit DefaultRevealDurationSet(oldDuration, duration);
@@ -148,9 +147,9 @@ contract SecretBallotManager {
      * @param duration Duration in seconds (minimum 1 minute, 0 = use default)
      */
     function setRevealDuration(uint pollId, uint duration) external onlyOwnerOrElectionsManager {
-        require(duration == 0 || duration >= MIN_REVEAL_DURATION, "Reveal duration too short");
+        if (!(duration == 0 || duration >= MIN_REVEAL_DURATION)) revert RevealDurationTooShort();
         uint startTime = electionsManager.getPollStartTime(pollId);
-        require(block.timestamp < startTime, "Poll already started");
+        if (!(block.timestamp < startTime)) revert PollStarted();
         pollRevealDuration[pollId] = duration;
         emit RevealDurationSet(pollId, duration);
     }
@@ -181,7 +180,7 @@ contract SecretBallotManager {
         (,,,,,,,,,, bool tokenVotingRequired) = electionsManager.polls(pollId);
 
         if (tokenVotingRequired) {
-            revert("Token-required: use commitVoteWithToken().");
+            revert TokenVotingRequired();
         }
 
         hasCommitted[pollId][msg.sender] = true;
@@ -205,7 +204,7 @@ contract SecretBallotManager {
         _validateCommit(pollId, commitHash);
 
         (,,,,,,,,, bool tokenVotingEnabled,) = electionsManager.polls(pollId);
-        require(tokenVotingEnabled, "Token voting not enabled.");
+        if (!(tokenVotingEnabled)) revert TokenVotingNotEnabled();
 
         // Burn token at commit time via ElectionsManager callback
         electionsManager.burnTokenForCommit(pollId, msg.sender);
@@ -229,19 +228,19 @@ contract SecretBallotManager {
      * @param salt Random bytes32 used when committing
      */
     function revealVote(uint pollId, uint optionId, bytes32 salt) external {
-        require(electionsManager.secretBallot(pollId), "Not a secret ballot poll.");
-        require(hasCommitted[pollId][msg.sender], "No commitment found.");
-        require(!hasRevealed[pollId][msg.sender], "Already revealed.");
+        if (!(electionsManager.secretBallot(pollId))) revert NotSecretBallot();
+        if (!(hasCommitted[pollId][msg.sender])) revert NoCommitment();
+        if (hasRevealed[pollId][msg.sender]) revert AlreadyRevealed();
 
         uint endTime = electionsManager.getPollEndTime(pollId);
-        require(_isInRevealPeriod(endTime, pollId), "Not in reveal period.");
+        if (!(_isInRevealPeriod(endTime, pollId))) revert NotInRevealPeriod();
 
         uint optionsCount = electionsManager.getOptionsCount(pollId);
-        require(optionId > 0 && optionId <= optionsCount, "Invalid option.");
+        if (!(optionId > 0 && optionId <= optionsCount)) revert InvalidOption();
 
         // Verify commitment: hash must match exactly
         bytes32 expectedHash = keccak256(abi.encodePacked(pollId, optionId, salt, msg.sender));
-        require(voteCommitments[pollId][msg.sender] == expectedHash, "Invalid reveal: hash mismatch.");
+        if (!(voteCommitments[pollId][msg.sender] == expectedHash)) revert HashMismatch();
 
         // Mark as revealed
         hasRevealed[pollId][msg.sender] = true;
@@ -313,12 +312,12 @@ contract SecretBallotManager {
      * @dev Validate a commit (shared between commitVote and commitVoteWithToken)
      */
     function _validateCommit(uint pollId, bytes32 commitHash) internal view {
-        require(electionsManager.secretBallot(pollId), "Secret ballot not enabled.");
-        require(electionsManager.isVoterAuthorized(pollId, msg.sender), "Not authorized.");
-        require(electionsManager.isPollActive(pollId), "Not in commit phase.");
-        require(!hasCommitted[pollId][msg.sender], "Already committed.");
-        require(!electionsManager.hasDelegated(pollId, msg.sender), "Delegated vote.");
-        require(commitHash != bytes32(0), "Invalid commit hash.");
+        if (!(electionsManager.secretBallot(pollId))) revert SecretBallotNotEnabled();
+        if (!(electionsManager.isVoterAuthorized(pollId, msg.sender))) revert NotVoter();
+        if (!(electionsManager.isPollActive(pollId))) revert PollNotActive();
+        if (hasCommitted[pollId][msg.sender]) revert AlreadyCommitted();
+        if (electionsManager.hasDelegated(pollId, msg.sender)) revert VoteIsDelegated();
+        if (!(commitHash != bytes32(0))) revert InvalidCommitHash();
     }
 
     /**

@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "./TokenManager.sol";
+import "./VotingErrors.sol";
 
 /**
  * @title VotingPaymaster
@@ -15,7 +16,7 @@ contract VotingPaymaster {
     uint256 private constant _ENTERED = 2;
 
     modifier nonReentrant() {
-        require(_reentrancyStatus != _ENTERED, "ReentrancyGuard: reentrant call");
+        if (!(_reentrancyStatus != _ENTERED)) revert ReentrantCall();
         _reentrancyStatus = _ENTERED;
         _;
         _reentrancyStatus = _NOT_ENTERED;
@@ -58,12 +59,12 @@ contract VotingPaymaster {
     event AdminTransferred(address indexed previousAdmin, address indexed newAdmin);
 
     modifier onlyAdmin() {
-        require(msg.sender == admin, "Only admin");
+        if (!(msg.sender == admin)) revert Unauthorized();
         _;
     }
 
     modifier onlyVotingContract() {
-        require(msg.sender == votingContract, "Only voting contract");
+        if (!(msg.sender == votingContract)) revert Unauthorized();
         _;
     }
 
@@ -74,9 +75,9 @@ contract VotingPaymaster {
      * @param _admin Address of the admin
      */
     constructor(address _votingContract, address _tokenManager, address _admin) {
-        require(_votingContract != address(0), "Invalid voting contract");
-        require(_tokenManager != address(0), "Invalid token manager");
-        require(_admin != address(0), "Invalid admin");
+        if (!(_votingContract != address(0))) revert ZeroAddress();
+        if (!(_tokenManager != address(0))) revert ZeroAddress();
+        if (!(_admin != address(0))) revert ZeroAddress();
 
         votingContract = _votingContract;
         tokenManager = TokenManager(_tokenManager);
@@ -99,7 +100,7 @@ contract VotingPaymaster {
      * @notice Fund the paymaster with ETH
      */
     function fund() external payable {
-        require(msg.value > 0, "Must send ETH");
+        if (!(msg.value > 0)) revert MustSendETH();
         emit Funded(msg.sender, msg.value);
     }
 
@@ -108,9 +109,9 @@ contract VotingPaymaster {
      * @param amount Amount to withdraw
      */
     function withdraw(uint256 amount) external onlyAdmin {
-        require(address(this).balance >= amount, "Insufficient balance");
+        if (!(address(this).balance >= amount)) revert InsufficientBalance();
         (bool success, ) = payable(admin).call{value: amount}("");
-        require(success, "ETH transfer failed");
+        if (!(success)) revert TransferFailed();
         emit Withdrawn(admin, amount);
     }
 
@@ -119,7 +120,7 @@ contract VotingPaymaster {
      * @param relayer Address of relayer
      */
     function addRelayer(address relayer) external onlyAdmin {
-        require(relayer != address(0), "Invalid relayer");
+        if (!(relayer != address(0))) revert ZeroAddress();
         trustedRelayers[relayer] = true;
         emit RelayerAdded(relayer);
     }
@@ -160,7 +161,7 @@ contract VotingPaymaster {
         bytes32 r,
         bytes32 s
     ) public view returns (bool) {
-        require(block.timestamp <= deadline, "Signature expired");
+        if (!(block.timestamp <= deadline)) revert SignatureExpired();
 
         bytes32 structHash = keccak256(
             abi.encode(
@@ -178,11 +179,8 @@ contract VotingPaymaster {
         );
 
         // Reject malleable signatures (EIP-2 / OpenZeppelin ECDSA standard)
-        require(
-            uint256(s) <= 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0,
-            "Invalid s value"
-        );
-        require(v == 27 || v == 28, "Invalid v value");
+        if (!(uint256(s) <= 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0)) revert InvalidSValue();
+        if (!(v == 27 || v == 28)) revert InvalidVValue();
 
         address recoveredAddress = ecrecover(digest, v, r, s);
         return recoveredAddress == voter && recoveredAddress != address(0);
@@ -209,18 +207,18 @@ contract VotingPaymaster {
         uint256 gasStart = gasleft();
 
         // L-2: Validate voter address
-        require(voter != address(0), "Invalid voter");
+        if (!(voter != address(0))) revert ZeroAddress();
 
         // Enforce relayer whitelist if enabled
         if (relayerWhitelistEnabled) {
-            require(trustedRelayers[msg.sender], "Only trusted relayers can execute");
+            if (!(trustedRelayers[msg.sender])) revert Unauthorized();
         }
 
         // Verify signature
-        require(verifySignature(pollId, optionId, voter, deadline, v, r, s), "Invalid signature");
+        if (!(verifySignature(pollId, optionId, voter, deadline, v, r, s))) revert InvalidSignature();
 
         // Check voter has tokens
-        require(tokenManager.hasVoteTokens(pollId, voter), "Insufficient vote tokens");
+        if (!(tokenManager.hasVoteTokens(pollId, voter))) revert InsufficientTokens();
 
         // Increment nonce BEFORE external call (CEI pattern, prevents replay)
         nonces[voter]++;
@@ -238,7 +236,7 @@ contract VotingPaymaster {
         if (!success) {
             // If returndata is empty, use a generic error message
             if (returndata.length == 0) {
-                revert("Vote execution failed");
+                revert VoteExecutionFailed();
             }
             // Otherwise, bubble up the error
             assembly {
@@ -258,7 +256,7 @@ contract VotingPaymaster {
      * @param newAdmin New admin address
      */
     function transferAdmin(address newAdmin) external onlyAdmin {
-        require(newAdmin != address(0), "Invalid admin");
+        if (!(newAdmin != address(0))) revert ZeroAddress();
         address previous = admin;
         admin = newAdmin;
         emit AdminTransferred(previous, newAdmin);

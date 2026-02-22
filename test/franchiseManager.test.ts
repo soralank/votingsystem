@@ -118,7 +118,7 @@ describe("FranchiseManager", function () {
             tokenManager.target,
             ethers.ZeroAddress
           )
-      ).to.be.revertedWith("Only owner");
+      ).to.be.revertedWithCustomError(franchiseManager, "Unauthorized");
     });
 
     it("should revert for zero address", async function () {
@@ -131,7 +131,7 @@ describe("FranchiseManager", function () {
           tokenManager.target,
           ethers.ZeroAddress
         )
-      ).to.be.revertedWith("Invalid address");
+      ).to.be.revertedWithCustomError(franchiseManager, "ZeroAddress");
     });
 
     it("should revert if owner tries to franchise themselves", async function () {
@@ -144,7 +144,7 @@ describe("FranchiseManager", function () {
           tokenManager.target,
           ethers.ZeroAddress
         )
-      ).to.be.revertedWith("Owner cannot be franchisee");
+      ).to.be.revertedWithCustomError(franchiseManager, "OwnerCannotBeFranchisee");
     });
 
     it("should revert if maxPolls is 0", async function () {
@@ -157,7 +157,7 @@ describe("FranchiseManager", function () {
           tokenManager.target,
           ethers.ZeroAddress
         )
-      ).to.be.revertedWith("Polls: 1-100");
+      ).to.be.revertedWithCustomError(franchiseManager, "InvalidPollCount");
     });
 
     it("should revert if maxPolls exceeds 100", async function () {
@@ -170,7 +170,7 @@ describe("FranchiseManager", function () {
           tokenManager.target,
           ethers.ZeroAddress
         )
-      ).to.be.revertedWith("Polls: 1-100");
+      ).to.be.revertedWithCustomError(franchiseManager, "InvalidPollCount");
     });
 
     it("should revert if duration is 0", async function () {
@@ -183,7 +183,7 @@ describe("FranchiseManager", function () {
           tokenManager.target,
           ethers.ZeroAddress
         )
-      ).to.be.revertedWith("Duration must be > 0");
+      ).to.be.revertedWithCustomError(franchiseManager, "ZeroAmount");
     });
 
     it("should supersede active franchise when re-granting to same address", async function () {
@@ -290,7 +290,7 @@ describe("FranchiseManager", function () {
           tokenManager.target,
           thirdPartyPaymaster.target
         )
-      ).to.be.revertedWith("Paymaster admin must be owner or franchisee");
+      ).to.be.revertedWithCustomError(franchiseManager, "BadPaymaster");
     });
 
     it("should allow paymaster whose admin is the system owner", async function () {
@@ -408,7 +408,7 @@ describe("FranchiseManager", function () {
           .createFranchisePoll("Poll 2", now + 60, 3600, false, false, {
             value: 0,
           })
-      ).to.be.revertedWith("Insufficient fee");
+      ).to.be.revertedWithCustomError(franchiseManager, "InsufficientFee");
 
       // Second poll — with fee
       await franchiseManager
@@ -470,7 +470,7 @@ describe("FranchiseManager", function () {
         franchiseManager
           .connect(attacker)
           .createFranchisePoll("Bad Poll", now + 60, 3600, false, false)
-      ).to.be.revertedWith("No franchise");
+      ).to.be.revertedWithCustomError(franchiseManager, "NoFranchise");
     });
 
     it("should revert if franchise expired", async function () {
@@ -493,7 +493,7 @@ describe("FranchiseManager", function () {
         franchiseManager
           .connect(franchisee2)
           .createFranchisePoll("Expired Poll", now + 60, 3600, false, false)
-      ).to.be.revertedWith("Franchise expired");
+      ).to.be.revertedWithCustomError(franchiseManager, "FranchiseExpired");
     });
 
     it("should revert when max polls reached", async function () {
@@ -528,7 +528,7 @@ describe("FranchiseManager", function () {
           .createFranchisePoll("F2 Poll 3", now + 60, 3600, false, false, {
             value: FEE_PER_POLL,
           })
-      ).to.be.revertedWith("Max polls reached");
+      ).to.be.revertedWithCustomError(franchiseManager, "FranchiseExhausted");
     });
 
     it("franchisee should be able to manage their poll as admin", async function () {
@@ -660,7 +660,7 @@ describe("FranchiseManager", function () {
         franchiseManager
           .connect(franchisee1)
           .createFranchisePoll("Nope", now + 60, 3600, false, false)
-      ).to.be.revertedWith("No franchise");
+      ).to.be.revertedWithCustomError(franchiseManager, "NoFranchise");
     });
 
     it("should reject transfer and refund fee", async function () {
@@ -689,7 +689,7 @@ describe("FranchiseManager", function () {
         franchiseManager
           .connect(attacker)
           .requestTransfer(1, franchisee2.address, { value: TRANSFER_FEE })
-      ).to.be.revertedWith("Not franchisee");
+      ).to.be.revertedWithCustomError(franchiseManager, "Unauthorized");
     });
 
     it("should revert transfer if insufficient fee", async function () {
@@ -697,7 +697,7 @@ describe("FranchiseManager", function () {
         franchiseManager
           .connect(franchisee1)
           .requestTransfer(1, franchisee2.address, { value: 0 })
-      ).to.be.revertedWith("Insufficient transfer fee");
+      ).to.be.revertedWithCustomError(franchiseManager, "InsufficientFee");
     });
 
     it("should revert transfer if franchise expired", async function () {
@@ -718,7 +718,7 @@ describe("FranchiseManager", function () {
         franchiseManager
           .connect(franchisee2)
           .requestTransfer(2, alice.address, { value: TRANSFER_FEE })
-      ).to.be.revertedWith("Franchise expired");
+      ).to.be.revertedWithCustomError(franchiseManager, "FranchiseExpired");
     });
 
     it("should revert if transfer already pending", async function () {
@@ -730,7 +730,7 @@ describe("FranchiseManager", function () {
         franchiseManager
           .connect(franchisee1)
           .requestTransfer(1, alice.address, { value: TRANSFER_FEE })
-      ).to.be.revertedWith("Transfer pending");
+      ).to.be.revertedWithCustomError(franchiseManager, "TransferPending");
     });
 
     it("should revert transfer to address with active franchise", async function () {
@@ -747,7 +747,7 @@ describe("FranchiseManager", function () {
         franchiseManager
           .connect(franchisee1)
           .requestTransfer(1, franchisee2.address, { value: TRANSFER_FEE })
-      ).to.be.revertedWith("Target has active franchise");
+      ).to.be.revertedWithCustomError(franchiseManager, "TargetHasActiveFranchise");
     });
 
     it("should revert transfer to zero address", async function () {
@@ -755,7 +755,7 @@ describe("FranchiseManager", function () {
         franchiseManager
           .connect(franchisee1)
           .requestTransfer(1, ethers.ZeroAddress, { value: TRANSFER_FEE })
-      ).to.be.revertedWith("Invalid address");
+      ).to.be.revertedWithCustomError(franchiseManager, "ZeroAddress");
     });
 
     it("should revert transfer to owner", async function () {
@@ -763,7 +763,7 @@ describe("FranchiseManager", function () {
         franchiseManager
           .connect(franchisee1)
           .requestTransfer(1, owner.address, { value: TRANSFER_FEE })
-      ).to.be.revertedWith("Owner cannot be franchisee");
+      ).to.be.revertedWithCustomError(franchiseManager, "OwnerCannotBeFranchisee");
     });
 
     it("only owner can approve/reject transfers", async function () {
@@ -773,20 +773,16 @@ describe("FranchiseManager", function () {
 
       await expect(
         franchiseManager.connect(attacker).approveTransfer(1)
-      ).to.be.revertedWith("Only owner");
+      ).to.be.revertedWithCustomError(franchiseManager, "Unauthorized");
 
       await expect(
         franchiseManager.connect(attacker).rejectTransfer(1)
-      ).to.be.revertedWith("Only owner");
+      ).to.be.revertedWithCustomError(franchiseManager, "Unauthorized");
     });
 
     it("should revert approve/reject if no pending transfer", async function () {
-      await expect(franchiseManager.approveTransfer(1)).to.be.revertedWith(
-        "No pending transfer"
-      );
-      await expect(franchiseManager.rejectTransfer(1)).to.be.revertedWith(
-        "No pending transfer"
-      );
+      await expect(franchiseManager.approveTransfer(1)).to.be.revertedWithCustomError(franchiseManager, "NoTransferPending");
+      await expect(franchiseManager.rejectTransfer(1)).to.be.revertedWithCustomError(franchiseManager, "NoTransferPending");
     });
   });
 
@@ -935,15 +931,13 @@ describe("FranchiseManager", function () {
     });
 
     it("should revert withdraw if no fees", async function () {
-      await expect(franchiseManager.withdrawFees()).to.be.revertedWith(
-        "No fees"
-      );
+      await expect(franchiseManager.withdrawFees()).to.be.revertedWithCustomError(franchiseManager, "NoFeesToWithdraw");
     });
 
     it("only owner can withdraw", async function () {
       await expect(
         franchiseManager.connect(attacker).withdrawFees()
-      ).to.be.revertedWith("Only owner");
+      ).to.be.revertedWithCustomError(franchiseManager, "Unauthorized");
     });
 
     it("should set and read transfer fee", async function () {
@@ -958,7 +952,7 @@ describe("FranchiseManager", function () {
     it("only owner can set transfer fee", async function () {
       await expect(
         franchiseManager.connect(attacker).setTransferFee(ONE_ETH)
-      ).to.be.revertedWith("Only owner");
+      ).to.be.revertedWithCustomError(franchiseManager, "Unauthorized");
     });
   });
 
@@ -1067,7 +1061,7 @@ describe("FranchiseManager", function () {
         electionsManager
           .connect(franchisee1)
           .setFranchiseManager(attacker.address)
-      ).to.be.revertedWith("Only owner can call");
+      ).to.be.revertedWithCustomError(franchiseManager, "Unauthorized");
     });
 
     it("franchisee cannot call setTokenManager", async function () {
@@ -1075,7 +1069,7 @@ describe("FranchiseManager", function () {
         electionsManager
           .connect(franchisee1)
           .setTokenManager(attacker.address)
-      ).to.be.revertedWith("Only owner can call");
+      ).to.be.revertedWithCustomError(franchiseManager, "Unauthorized");
     });
 
     it("franchisee cannot directly call createPoll on ElectionsManager", async function () {
@@ -1084,13 +1078,13 @@ describe("FranchiseManager", function () {
         electionsManager
           .connect(franchisee1)
           .createPoll("Direct Poll", franchisee1.address, now + 60, 3600, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
-      ).to.be.revertedWith("Not authorized");
+      ).to.be.revertedWithCustomError(franchiseManager, "Unauthorized");
     });
 
     it("setFranchiseManager requires non-zero address", async function () {
       await expect(
         electionsManager.setFranchiseManager(ethers.ZeroAddress)
-      ).to.be.revertedWith("Invalid address");
+      ).to.be.revertedWithCustomError(franchiseManager, "ZeroAddress");
     });
 
     it("setFranchiseManager emits event", async function () {
@@ -1226,7 +1220,7 @@ describe("FranchiseManager", function () {
       const FranchiseManager = await ethers.getContractFactory("FranchiseManager");
       await expect(
         FranchiseManager.deploy(ethers.ZeroAddress)
-      ).to.be.revertedWith("Invalid address");
+      ).to.be.revertedWithCustomError(franchiseManager, "ZeroAddress");
     });
   });
 
@@ -1267,13 +1261,13 @@ describe("FranchiseManager", function () {
     it("should revert if non-owner calls addPolls", async function () {
       await expect(
         franchiseManager.connect(franchisee1).addPolls(1, 5)
-      ).to.be.revertedWith("Only owner");
+      ).to.be.revertedWithCustomError(franchiseManager, "Unauthorized");
     });
 
     it("should revert if franchise does not exist", async function () {
       await expect(
         franchiseManager.addPolls(999, 5)
-      ).to.be.revertedWith("Franchise does not exist");
+      ).to.be.revertedWithCustomError(franchiseManager, "FranchiseNotFound");
     });
 
     it("should revert if franchise is expired", async function () {
@@ -1291,7 +1285,7 @@ describe("FranchiseManager", function () {
 
       await expect(
         franchiseManager.addPolls(2, 5)
-      ).to.be.revertedWith("Franchise expired");
+      ).to.be.revertedWithCustomError(franchiseManager, "FranchiseExpired");
     });
 
     it("should allow adding polls to an exhausted franchise", async function () {
@@ -1318,13 +1312,13 @@ describe("FranchiseManager", function () {
     it("should revert if additionalPolls is 0", async function () {
       await expect(
         franchiseManager.addPolls(1, 0)
-      ).to.be.revertedWith("Must add > 0");
+      ).to.be.revertedWithCustomError(franchiseManager, "ZeroAmount");
     });
 
     it("should revert if total exceeds 100", async function () {
       await expect(
         franchiseManager.addPolls(1, 96)
-      ).to.be.revertedWith("Exceeds 100 poll cap");
+      ).to.be.revertedWithCustomError(franchiseManager, "ExceedsPollCap");
     });
 
     it("should allow adding up to exactly 100", async function () {
@@ -1516,26 +1510,26 @@ describe("FranchiseManager", function () {
     it("should reject transfer to zero address", async function () {
       await expect(
         franchiseManager.transferOwnership(ethers.ZeroAddress)
-      ).to.be.revertedWith("Invalid address");
+      ).to.be.revertedWithCustomError(franchiseManager, "ZeroAddress");
     });
 
     it("should reject transfer to same owner", async function () {
       await expect(
         franchiseManager.transferOwnership(owner.address)
-      ).to.be.revertedWith("Already owner");
+      ).to.be.revertedWithCustomError(franchiseManager, "SameAddress");
     });
 
     it("should reject non-owner transfer", async function () {
       await expect(
         franchiseManager.connect(attacker).transferOwnership(attacker.address)
-      ).to.be.revertedWith("Only owner");
+      ).to.be.revertedWithCustomError(franchiseManager, "Unauthorized");
     });
 
     it("should reject non-pending acceptOwnership", async function () {
       await franchiseManager.transferOwnership(franchisee1.address);
       await expect(
         franchiseManager.connect(attacker).acceptOwnership()
-      ).to.be.revertedWith("Only pending owner");
+      ).to.be.revertedWithCustomError(franchiseManager, "OnlyPendingOwner");
     });
 
     it("should emit OwnershipTransferStarted on initiate", async function () {
@@ -1566,7 +1560,7 @@ describe("FranchiseManager", function () {
           franchisee1.address,
           { value: TRANSFER_FEE }
         )
-      ).to.be.revertedWith("Cannot self-transfer");
+      ).to.be.revertedWithCustomError(franchiseManager, "CannotSelfTransfer");
     });
   });
 
@@ -1579,7 +1573,7 @@ describe("FranchiseManager", function () {
           to: franchiseManager.target,
           value: ethers.parseEther("0.01"),
         })
-      ).to.be.revertedWith("Use createFranchisePoll or requestTransfer");
+      ).to.be.revertedWithCustomError(franchiseManager, "NoPlainEther");
     });
 
     it("should reject calls to unknown functions via fallback()", async function () {
@@ -1589,7 +1583,7 @@ describe("FranchiseManager", function () {
           value: ethers.parseEther("0.01"),
           data: "0xdeadbeef",
         })
-      ).to.be.revertedWith("Unknown function");
+      ).to.be.revertedWithCustomError(franchiseManager, "UnknownFunction");
     });
   });
 

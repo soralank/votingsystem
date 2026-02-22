@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: LicenseRef-ANKIT-SORAL
 pragma solidity ^0.8.20;
 
+import "./VotingErrors.sol";
+
 /**
  * @title IElectionsManagerReader
  * @notice Minimal interface to read ElectionsManager state and module addresses
@@ -98,7 +100,7 @@ contract VotingReader {
     IElectionsManagerReader public immutable electionsManager;
 
     constructor(address _electionsManager) {
-        require(_electionsManager != address(0), "Invalid EM address");
+        if (!(_electionsManager != address(0))) revert ZeroAddress();
         electionsManager = IElectionsManagerReader(_electionsManager);
     }
 

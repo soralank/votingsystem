@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: LicenseRef-ANKIT-SORAL
 pragma solidity ^0.8.20;
 
+import "../VotingErrors.sol";
+
 /**
  * @title DelegationVoting
  * @notice Module for vote delegation state management
@@ -23,7 +25,7 @@ contract DelegationVoting {
     event VotedAsDelegate(uint indexed pollId, address indexed delegate, address indexed delegator, uint optionId);
 
     modifier onlyElectionsManager() {
-        require(msg.sender == electionsManager, "Only ElectionsManager");
+        if (!(msg.sender == electionsManager)) revert Unauthorized();
         _;
     }
 
@@ -39,9 +41,9 @@ contract DelegationVoting {
      * @param delegatee Address to delegate to
      */
     function recordDelegation(uint pollId, address delegator, address delegatee) external onlyElectionsManager {
-        require(delegator != delegatee, "Cannot delegate to self.");
-        require(!hasDelegated[pollId][delegator], "Already delegated.");
-        require(!hasDelegated[pollId][delegatee], "Delegatee already delegated");
+        if (!(delegator != delegatee)) revert CannotSelfDelegate();
+        if (hasDelegated[pollId][delegator]) revert AlreadyDelegated();
+        if (hasDelegated[pollId][delegatee]) revert DelegateeAlreadyDelegated();
 
         voteDelegation[pollId][delegator] = delegatee;
         hasDelegated[pollId][delegator] = true;
@@ -57,7 +59,7 @@ contract DelegationVoting {
      * @param delegator Address of voter removing delegation
      */
     function removeDelegation(uint pollId, address delegator) external onlyElectionsManager {
-        require(hasDelegated[pollId][delegator], "No active delegation.");
+        if (!(hasDelegated[pollId][delegator])) revert NoDelegation();
 
         address previousDelegatee = voteDelegation[pollId][delegator];
         voteDelegation[pollId][delegator] = address(0);
@@ -77,8 +79,8 @@ contract DelegationVoting {
      * @param optionId Option voted for
      */
     function recordDelegateVote(uint pollId, address delegate, address delegator, uint optionId) external onlyElectionsManager {
-        require(hasDelegated[pollId][delegator], "Voter has not delegated.");
-        require(voteDelegation[pollId][delegator] == delegate, "You are not the delegatee.");
+        if (!(hasDelegated[pollId][delegator])) revert NoDelegation();
+        if (!(voteDelegation[pollId][delegator] == delegate)) revert NotDelegatee();
 
         emit VotedAsDelegate(pollId, delegate, delegator, optionId);
     }

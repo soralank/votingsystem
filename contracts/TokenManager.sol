@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "./VotingToken.sol";
+import "./VotingErrors.sol";
 
 /**
  * @title TokenManager
@@ -32,7 +33,7 @@ contract TokenManager {
     event TokenVotingDisabled(uint256 indexed pollId);
 
     modifier onlyVotingContract() {
-        require(msg.sender == votingContract, "Only voting contract");
+        if (!(msg.sender == votingContract)) revert Unauthorized();
         _;
     }
 
@@ -41,7 +42,7 @@ contract TokenManager {
      * @param _votingContract Address of the voting contract
      */
     constructor(address _votingContract) {
-        require(_votingContract != address(0), "Invalid voting contract");
+        if (!(_votingContract != address(0))) revert ZeroAddress();
         votingContract = _votingContract;
     }
 
@@ -57,7 +58,7 @@ contract TokenManager {
         string calldata name,
         string calldata symbol
     ) external onlyVotingContract returns (address) {
-        require(pollTokens[pollId] == address(0), "Token already exists for this poll");
+        if (!(pollTokens[pollId] == address(0))) revert TokenAlreadyExists();
 
         VotingToken token = new VotingToken(pollId, name, symbol);
         pollTokens[pollId] = address(token);
@@ -77,9 +78,9 @@ contract TokenManager {
         address voter,
         uint256 amount
     ) external onlyVotingContract {
-        require(pollTokens[pollId] != address(0), "No token for this poll");
-        require(voter != address(0), "Invalid voter");
-        require(amount > 0, "Amount must be positive");
+        if (!(pollTokens[pollId] != address(0))) revert NoTokenForPoll();
+        if (!(voter != address(0))) revert ZeroAddress();
+        if (!(amount > 0)) revert ZeroAmount();
 
         VotingToken token = VotingToken(pollTokens[pollId]);
         token.mint(voter, amount);
@@ -100,15 +101,15 @@ contract TokenManager {
         address[] calldata voters,
         uint256[] calldata amounts
     ) external onlyVotingContract {
-        require(voters.length == amounts.length, "Array length mismatch");
-        require(voters.length > 0, "Empty arrays");
-        require(pollTokens[pollId] != address(0), "No token for this poll");
+        if (!(voters.length == amounts.length)) revert ArrayLengthMismatch();
+        if (!(voters.length > 0)) revert EmptyArray();
+        if (!(pollTokens[pollId] != address(0))) revert NoTokenForPoll();
 
         VotingToken token = VotingToken(pollTokens[pollId]);
 
         for (uint256 i = 0; i < voters.length; i++) {
-            require(voters[i] != address(0), "Invalid voter");
-            require(amounts[i] > 0, "Amount must be positive");
+            if (!(voters[i] != address(0))) revert ZeroAddress();
+            if (!(amounts[i] > 0)) revert ZeroAmount();
 
             token.mint(voters[i], amounts[i]);
             allocatedTokens[pollId][voters[i]] += amounts[i];
@@ -123,10 +124,10 @@ contract TokenManager {
      * @param voter Voter address
      */
     function burnTokensForVote(uint256 pollId, address voter) external onlyVotingContract {
-        require(pollTokens[pollId] != address(0), "No token for this poll");
+        if (!(pollTokens[pollId] != address(0))) revert NoTokenForPoll();
 
         VotingToken token = VotingToken(pollTokens[pollId]);
-        require(token.balanceOf(voter) >= TOKENS_PER_VOTE, "Insufficient tokens");
+        if (!(token.balanceOf(voter) >= TOKENS_PER_VOTE)) revert InsufficientTokens();
 
         token.burn(voter, TOKENS_PER_VOTE);
 
@@ -140,11 +141,11 @@ contract TokenManager {
      * @param amount Number of tokens to burn
      */
     function burnTokens(uint256 pollId, address voter, uint256 amount) external onlyVotingContract {
-        require(pollTokens[pollId] != address(0), "No token for this poll");
-        require(amount > 0, "Amount must be positive");
+        if (!(pollTokens[pollId] != address(0))) revert NoTokenForPoll();
+        if (!(amount > 0)) revert ZeroAmount();
 
         VotingToken token = VotingToken(pollTokens[pollId]);
-        require(token.balanceOf(voter) >= amount, "Insufficient tokens");
+        if (!(token.balanceOf(voter) >= amount)) revert InsufficientTokens();
 
         token.burn(voter, amount);
 
@@ -184,7 +185,7 @@ contract TokenManager {
      * @param pollId The poll ID
      */
     function enableTokenVoting(uint256 pollId) external onlyVotingContract {
-        require(pollTokens[pollId] != address(0), "No token for this poll");
+        if (!(pollTokens[pollId] != address(0))) revert NoTokenForPoll();
         tokenVotingEnabled[pollId] = true;
         emit TokenVotingEnabled(pollId);
     }

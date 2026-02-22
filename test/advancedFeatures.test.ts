@@ -31,8 +31,20 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
   let dave: any;
   let attacker: any;
 
+  // Module contract factories (for revertedWithCustomError on module-level errors)
+  let MultiChoiceVotingFactory: any;
+  let QuadraticVotingFactory: any;
+  let DelegationVotingFactory: any;
+  let MetadataVotingFactory: any;
+
   beforeEach(async function () {
     [owner, admin, alice, bob, charlie, dave, attacker] = await ethers.getSigners();
+
+    // Load module factories for custom error matching
+    MultiChoiceVotingFactory = await ethers.getContractFactory("MultiChoiceVoting");
+    QuadraticVotingFactory = await ethers.getContractFactory("QuadraticVoting");
+    DelegationVotingFactory = await ethers.getContractFactory("DelegationVoting");
+    MetadataVotingFactory = await ethers.getContractFactory("MetadataVoting");
 
     // Deploy main contract
     voting = await ethers.deployContract("Voting");
@@ -181,7 +193,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
 
       await expect(
         voting.connect(alice).voteMultiChoice(pollId, [1, 1])
-      ).to.be.revertedWith("Duplicate option in choices.");
+      ).to.be.revertedWithCustomError(MultiChoiceVotingFactory, "DuplicateOption");
     });
 
     it("should reject multi-choice when not enabled", async function () {
@@ -196,7 +208,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
 
       await expect(
         voting.connect(alice).voteMultiChoice(pollId, [1, 2])
-      ).to.be.revertedWith("Multi-choice not enabled");
+      ).to.be.revertedWithCustomError(MultiChoiceVotingFactory, "MultiChoiceNotEnabled");
     });
 
     it("should reject too many choices", async function () {
@@ -213,7 +225,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
 
       await expect(
         voting.connect(alice).voteMultiChoice(pollId, [1, 2, 3])
-      ).to.be.revertedWith("Invalid choice count");
+      ).to.be.revertedWithCustomError(MultiChoiceVotingFactory, "InvalidChoiceCount");
     });
 
     it("should prevent double voting in multi-choice", async function () {
@@ -230,7 +242,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       await voting.connect(alice).voteMultiChoice(pollId, [1, 2]);
       await expect(
         voting.connect(alice).voteMultiChoice(pollId, [1])
-      ).to.be.revertedWith("Already voted");
+      ).to.be.revertedWithCustomError(voting, "AlreadyVoted");
     });
 
     it("should require at least 2 for maxChoices", async function () {
@@ -240,7 +252,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
 
       await expect(
         voting.connect(admin).setMaxChoices(pollId, 1)
-      ).to.be.revertedWith("Min 2 choices");
+      ).to.be.revertedWithCustomError(MultiChoiceVotingFactory, "MinTwoChoices");
     });
   });
 
@@ -263,7 +275,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       const pollId = await createStandardPoll("Quadratic No Token");
       await expect(
         voting.connect(admin).enableQuadraticVoting(pollId)
-      ).to.be.revertedWith("Needs token voting");
+      ).to.be.revertedWithCustomError(voting, "TokenVotingRequired");
     });
 
     it("should cast quadratic votes with correct cost", async function () {
@@ -310,7 +322,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       // 3 votes = 9 tokens, but only has 5
       await expect(
         voting.connect(alice).voteQuadratic(pollId, [1], [3])
-      ).to.be.revertedWith("Low tokens");
+      ).to.be.revertedWithCustomError(voting, "InsufficientTokens");
     });
 
     it("should reject quadratic vote when not enabled", async function () {
@@ -324,7 +336,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
 
       await expect(
         voting.connect(alice).voteQuadratic(pollId, [1], [2])
-      ).to.be.revertedWith("Quadratic voting not enabled.");
+      ).to.be.revertedWithCustomError(QuadraticVotingFactory, "QuadraticNotEnabled");
     });
 
     it("should reject duplicate options in quadratic vote", async function () {
@@ -340,7 +352,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
 
       await expect(
         voting.connect(alice).voteQuadratic(pollId, [1, 1], [2, 3])
-      ).to.be.revertedWith("Duplicate option in choices.");
+      ).to.be.revertedWithCustomError(MultiChoiceVotingFactory, "DuplicateOption");
     });
 
     it("should reveal quadratic vote allocations", async function () {
@@ -427,7 +439,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
 
       await expect(
         voting.connect(alice).delegateVote(pollId, alice.address)
-      ).to.be.revertedWith("Cannot delegate to self.");
+      ).to.be.revertedWithCustomError(DelegationVotingFactory, "CannotSelfDelegate");
     });
 
     it("should prevent delegation after voting", async function () {
@@ -444,7 +456,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
 
       await expect(
         voting.connect(alice).delegateVote(pollId, bob.address)
-      ).to.be.revertedWith("Voted already");
+      ).to.be.revertedWithCustomError(voting, "AlreadyVoted");
     });
 
     it("should prevent delegated voter from voting directly", async function () {
@@ -461,7 +473,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
 
       await expect(
         voting.connect(alice).voteInPoll(pollId, 1)
-      ).to.be.revertedWith("Delegated");
+      ).to.be.revertedWithCustomError(voting, "VoteIsDelegated");
     });
 
     it("should prevent wrong delegate from voting", async function () {
@@ -478,7 +490,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
 
       await expect(
         voting.connect(charlie).voteAsDelegate(pollId, 1, alice.address)
-      ).to.be.revertedWith("You are not the delegatee.");
+      ).to.be.revertedWithCustomError(DelegationVotingFactory, "NotDelegatee");
     });
 
     it("should allow removing delegation", async function () {
@@ -512,7 +524,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       await voting.connect(alice).delegateVote(pollId, bob.address);
       await expect(
         voting.connect(alice).delegateVote(pollId, charlie.address)
-      ).to.be.revertedWith("Already delegated.");
+      ).to.be.revertedWithCustomError(DelegationVotingFactory, "AlreadyDelegated");
     });
 
     it("should prevent delegation chain (delegatee cannot delegate)", async function () {
@@ -530,7 +542,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       // But now no one can delegate TO Bob because Bob has delegated his vote
       await expect(
         voting.connect(charlie).delegateVote(pollId, bob.address)
-      ).to.be.revertedWith("Delegatee already delegated");
+      ).to.be.revertedWithCustomError(DelegationVotingFactory, "DelegateeAlreadyDelegated");
 
       console.log("✓ Delegation chain correctly prevented");
     });
@@ -577,7 +589,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
 
       await expect(
         voting.connect(alice).delegateVote(pollId, bob.address)
-      ).to.be.revertedWith("Delegation off");
+      ).to.be.revertedWithCustomError(voting, "DelegationDisabled");
       console.log("✓ delegateVote reverts when delegation not enabled");
     });
 
@@ -592,7 +604,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
 
       await expect(
         voting.connect(bob).voteAsDelegate(pollId, 1, alice.address)
-      ).to.be.revertedWith("Delegation off");
+      ).to.be.revertedWithCustomError(voting, "DelegationDisabled");
       console.log("✓ voteAsDelegate reverts when delegation not enabled");
     });
 
@@ -639,7 +651,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
 
       await expect(
         voting.connect(admin).setPollMetadata(pollId, "")
-      ).to.be.revertedWith("Metadata URI cannot be empty.");
+      ).to.be.revertedWithCustomError(MetadataVotingFactory, "EmptyMetadata");
     });
 
     it("should only allow admin/owner to set metadata", async function () {
@@ -647,7 +659,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
 
       await expect(
         voting.connect(attacker).setPollMetadata(pollId, "ipfs://QmTest")
-      ).to.be.revertedWith("Admin only");
+      ).to.be.revertedWithCustomError(voting, "Unauthorized");
     });
 
     it("should allow updating metadata", async function () {
@@ -710,7 +722,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       // But delegation prevents voting anyway
       await expect(
         voting.connect(alice).voteMultiChoice(pollId, [1])
-      ).to.be.revertedWith("Delegated");
+      ).to.be.revertedWithCustomError(voting, "VoteIsDelegated");
 
       console.log("✓ Delegation blocks multi-choice voting for delegator");
     });
@@ -724,7 +736,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
       // Cannot enable delegation for token-based polls
       await expect(
         voting.connect(admin).enableDelegation(pollId)
-      ).to.be.revertedWith("No delegation");
+      ).to.be.revertedWithCustomError(voting, "NoDelegationForTokenPolls");
 
       // delegateVote also blocked since delegation not enabled
       const now = await getCurrentTimestamp();
@@ -733,7 +745,7 @@ describe("Advanced Features - Multi-Choice, Quadratic, Delegation, IPFS", functi
 
       await expect(
         voting.connect(alice).delegateVote(pollId, bob.address)
-      ).to.be.revertedWith("Delegation off");
+      ).to.be.revertedWithCustomError(voting, "DelegationDisabled");
 
       console.log("✓ Delegation blocked for token-based polls");
     });

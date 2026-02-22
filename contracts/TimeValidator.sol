@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: LicenseRef-ANKIT-SORAL
 pragma solidity ^0.8.20;
 
+import "./VotingErrors.sol";
+
 /**
  * @title TimeValidator
  * @notice All timestamps in this contract are Unix timestamps (seconds since Jan 1, 1970 00:00:00 UTC)
@@ -25,8 +27,8 @@ contract TimeValidator {
      *   - Python: int(datetime.datetime(2026, 3, 1, 10, 0, 0, tzinfo=datetime.timezone.utc).timestamp())
      */
     function _validateStartTime(uint startTime) internal view {
-        require(startTime >= block.timestamp, "Start time cannot be in the past.");
-        require(startTime <= block.timestamp + MAX_FUTURE_START, "Start time too far in future.");
+        if (!(startTime >= block.timestamp)) revert StartTimeInPast();
+        if (!(startTime <= block.timestamp + MAX_FUTURE_START)) revert StartTimeTooFarInFuture();
     }
 
     /**
@@ -38,7 +40,7 @@ contract TimeValidator {
      *   - 1 week = 604800 seconds
      */
     function _validateDuration(uint duration) internal pure {
-        require(duration >= MIN_POLL_DURATION, "Poll duration too short.");
+        if (!(duration >= MIN_POLL_DURATION)) revert DurationTooShort();
     }
 
     /**
@@ -53,7 +55,7 @@ contract TimeValidator {
         _validateDuration(duration);
         
         uint endTime = startTime + duration;
-        require(endTime > startTime, "Invalid time range - overflow.");
+        if (!(endTime > startTime)) revert TimeOverflow();
     }
 
     /**

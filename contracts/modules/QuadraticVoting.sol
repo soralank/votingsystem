@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: LicenseRef-ANKIT-SORAL
 pragma solidity ^0.8.20;
 
+import "../VotingErrors.sol";
+
 /**
  * @title QuadraticVoting
  * @notice Module for quadratic voting state management
@@ -23,7 +25,7 @@ contract QuadraticVoting {
     event VotedQuadratic(uint indexed pollId, address indexed voter, uint[] optionIds, uint[] voteAmounts, uint totalCost);
 
     modifier onlyElectionsManager() {
-        require(msg.sender == electionsManager, "Only ElectionsManager");
+        if (!(msg.sender == electionsManager)) revert Unauthorized();
         _;
     }
 
@@ -63,18 +65,18 @@ contract QuadraticVoting {
         uint[] calldata voteAmounts,
         uint optionsCount
     ) external onlyElectionsManager returns (uint totalCost, uint totalVotes) {
-        require(quadraticVotingEnabled[pollId], "Quadratic voting not enabled.");
-        require(optionIds.length > 0, "Must vote for at least one option.");
-        require(optionIds.length == voteAmounts.length, "Array length mismatch.");
+        if (!(quadraticVotingEnabled[pollId])) revert QuadraticNotEnabled();
+        if (!(optionIds.length > 0)) revert EmptyArray();
+        if (!(optionIds.length == voteAmounts.length)) revert ArrayLengthMismatch();
 
         totalCost = 0;
         totalVotes = 0;
         for (uint i = 0; i < optionIds.length; i++) {
-            require(optionIds[i] > 0 && optionIds[i] <= optionsCount, "Invalid option.");
-            require(voteAmounts[i] > 0, "Vote amount must be positive.");
+            if (!(optionIds[i] > 0 && optionIds[i] <= optionsCount)) revert InvalidOption();
+            if (!(voteAmounts[i] > 0)) revert ZeroAmount();
             // Check for duplicate options
             for (uint j = 0; j < i; j++) {
-                require(optionIds[i] != optionIds[j], "Duplicate option in choices.");
+                if (!(optionIds[i] != optionIds[j])) revert DuplicateOption();
             }
 
             uint cost = voteAmounts[i] * voteAmounts[i]; // quadratic cost

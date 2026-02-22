@@ -6,6 +6,7 @@ import "./modules/MultiChoiceVoting.sol";
 import "./modules/QuadraticVoting.sol";
 import "./modules/DelegationVoting.sol";
 import "./modules/MetadataVoting.sol";
+import "./VotingErrors.sol";
 
 /**
  * @title ISecretBallotManager
@@ -135,7 +136,7 @@ contract ElectionsManager is TokenIntegratedVoting {
     event DelegationEnabled(uint indexed pollId);
 
     modifier onlyAdminOrOwner(uint pollId) {
-        require(msg.sender == polls[pollId].admin || msg.sender == owner, "Admin only");
+        if (!(msg.sender == polls[pollId].admin || msg.sender == owner)) revert Unauthorized();
         _;
     }
 
@@ -157,10 +158,10 @@ contract ElectionsManager is TokenIntegratedVoting {
         address customTokenManager,
         address customVotingPaymaster
     ) external returns (uint) {
-        require(msg.sender == owner || msg.sender == franchiseMgr, "Not authorized");
-        require(admin != address(0), "admin zero");
+        if (!(msg.sender == owner || msg.sender == franchiseMgr)) revert Unauthorized();
+        if (!(admin != address(0))) revert ZeroAddress();
         // NEW: check for duplicate title
-        require(!pollTitles[title], "Dup title");
+        if (pollTitles[title]) revert DuplicateTitle();
 
         // Validate time range using TimeValidator
         _validateTimeRange(startTime, durationSeconds);
@@ -195,7 +196,7 @@ contract ElectionsManager is TokenIntegratedVoting {
         if (customVotingPaymaster != address(0)) {
             // Security: Verify paymaster admin consents
             address pmAdmin = VotingPaymaster(payable(customVotingPaymaster)).admin();
-            require(pmAdmin == owner || pmAdmin == admin, "Bad paymaster");
+            if (!(pmAdmin == owner || pmAdmin == admin)) revert BadPaymaster();
             pollVotingPaymaster[pid] = customVotingPaymaster;
         } else {
             pollVotingPaymaster[pid] = address(votingPaymaster);
@@ -242,15 +243,15 @@ contract ElectionsManager is TokenIntegratedVoting {
     }
 
     function addOptionToPoll(uint pollId, string calldata name) external {
-        require(polls[pollId].exists, "No poll");
-        require(!_hasEnded(polls[pollId].endTime), "Poll ended");
-        require(msg.sender == polls[pollId].admin || msg.sender == owner, "Admin only");
-        require(!_hasStarted(polls[pollId].startTime), "Poll started");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (_hasEnded(polls[pollId].endTime)) revert PollEnded();
+        if (!(msg.sender == polls[pollId].admin || msg.sender == owner)) revert Unauthorized();
+        if (_hasStarted(polls[pollId].startTime)) revert PollStarted();
         // NEW: check for duplicate option name in this poll
-        require(!pollOptionNames[pollId][name], "Dup name");
+        if (pollOptionNames[pollId][name]) revert DuplicateName();
 
         Poll storage p = polls[pollId];
-        require(p.optionsCount < MAX_OPTIONS, "Max options");
+        if (!(p.optionsCount < MAX_OPTIONS)) revert MaxOptionsReached();
         p.optionsCount += 1;
         uint oid = p.optionsCount;
         options[pollId][oid] = Option({ id: oid, name: name, votes: 0 });
@@ -261,25 +262,25 @@ contract ElectionsManager is TokenIntegratedVoting {
     }
 
     function addVoter(uint pollId, address voter) external onlyAdminOrOwner(pollId) {
-        require(polls[pollId].exists, "No poll");
-        require(!_hasEnded(polls[pollId].endTime), "Poll ended");
-        require(!_hasStarted(polls[pollId].startTime), "Poll started");
-        require(voter != address(0), "Bad addr");
-        require(!authorizedVoters[pollId][voter], "Dup voter");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (_hasEnded(polls[pollId].endTime)) revert PollEnded();
+        if (_hasStarted(polls[pollId].startTime)) revert PollStarted();
+        if (!(voter != address(0))) revert ZeroAddress();
+        if (authorizedVoters[pollId][voter]) revert DuplicateVoter();
 
         authorizedVoters[pollId][voter] = true;
         emit VoterAuthorized(pollId, voter);
     }
 
     function addVoters(uint pollId, address[] calldata voters) public onlyAdminOrOwner(pollId) {
-        require(polls[pollId].exists, "No poll");
-        require(!_hasEnded(polls[pollId].endTime), "Poll ended");
-        require(!_hasStarted(polls[pollId].startTime), "Poll started");
-        require(voters.length <= MAX_VOTERS_BATCH, "Batch limit");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (_hasEnded(polls[pollId].endTime)) revert PollEnded();
+        if (_hasStarted(polls[pollId].startTime)) revert PollStarted();
+        if (!(voters.length <= MAX_VOTERS_BATCH)) revert BatchLimitExceeded();
 
         for(uint i = 0; i < voters.length; i++) {
             address voter = voters[i];
-            require(voter != address(0), "Bad addr");
+            if (!(voter != address(0))) revert ZeroAddress();
             if (!authorizedVoters[pollId][voter]) {
                 authorizedVoters[pollId][voter] = true;
                 emit VoterAuthorized(pollId, voter);
@@ -288,11 +289,11 @@ contract ElectionsManager is TokenIntegratedVoting {
     }
 
     function removeVoter(uint pollId, address voter) external onlyAdminOrOwner(pollId) {
-        require(polls[pollId].exists, "No poll");
-        require(!_hasEnded(polls[pollId].endTime), "Poll ended");
-        require(!_hasStarted(polls[pollId].startTime), "Poll started");
-        require(authorizedVoters[pollId][voter], "Not authorized");
-        require(!hasVoted[pollId][voter], "Voter voted");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (_hasEnded(polls[pollId].endTime)) revert PollEnded();
+        if (_hasStarted(polls[pollId].startTime)) revert PollStarted();
+        if (!(authorizedVoters[pollId][voter])) revert Unauthorized();
+        if (hasVoted[pollId][voter]) revert AlreadyVoted();
 
         authorizedVoters[pollId][voter] = false;
         emit VoterUnauthorized(pollId, voter);
@@ -307,7 +308,7 @@ contract ElectionsManager is TokenIntegratedVoting {
     }
 
     function getOption(uint pollId, uint optionId) external view returns (uint, string memory, uint) {
-        require(polls[pollId].exists, "No poll");
+        if (!(polls[pollId].exists)) revert PollNotFound();
         Poll storage p = polls[pollId];
         Option storage o = options[pollId][optionId];
         
@@ -319,18 +320,18 @@ contract ElectionsManager is TokenIntegratedVoting {
     }
 
     function voteInPoll(uint pollId, uint optionId) external {
-        require(polls[pollId].exists, "No poll");
-        require(!secretBallot[pollId], "Secret poll");
-        require(authorizedVoters[pollId][msg.sender], "Not voter");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (secretBallot[pollId]) revert SecretPoll();
+        if (!(authorizedVoters[pollId][msg.sender])) revert NotVoter();
         Poll storage p = polls[pollId];
-        require(_isWithinVotingPeriod(p.startTime, p.endTime), "Not active");
-        require(optionId > 0 && optionId <= p.optionsCount, "Invalid option.");
-        require(!hasVoted[pollId][msg.sender], "Already voted");
-        require(!delegationVoting.hasDelegated(pollId, msg.sender), "Delegated");
+        if (!(_isWithinVotingPeriod(p.startTime, p.endTime))) revert PollNotActive();
+        if (!(optionId > 0 && optionId <= p.optionsCount)) revert InvalidOption();
+        if (hasVoted[pollId][msg.sender]) revert AlreadyVoted();
+        if (delegationVoting.hasDelegated(pollId, msg.sender)) revert VoteIsDelegated();
 
         // Check if token voting is required
         if (p.tokenVotingRequired) {
-            revert("Token voting required");
+            revert TokenVotingRequired();
         }
 
         hasVoted[pollId][msg.sender] = true;
@@ -356,25 +357,22 @@ contract ElectionsManager is TokenIntegratedVoting {
         address voter
     ) public override nonReentrant {
         // Can be called by voter directly OR by paymaster
-        require(
-            msg.sender == voter || msg.sender == pollVotingPaymaster[pollId],
-            "No access"
-        );
+        if (!(msg.sender == voter || msg.sender == pollVotingPaymaster[pollId])) revert Unauthorized();
 
-        require(polls[pollId].exists, "No poll");
-        require(!secretBallot[pollId], "Secret poll");
-        require(authorizedVoters[pollId][voter], "Not voter");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (secretBallot[pollId]) revert SecretPoll();
+        if (!(authorizedVoters[pollId][voter])) revert NotVoter();
         Poll storage p = polls[pollId];
-        require(_isWithinVotingPeriod(p.startTime, p.endTime), "Not active");
-        require(optionId > 0 && optionId <= p.optionsCount, "Invalid option.");
-        require(!hasVoted[pollId][voter], "Already voted.");
-        require(!delegationVoting.hasDelegated(pollId, voter), "Vote delegated");
-        require(p.tokenVotingEnabled, "Token voting not enabled");
+        if (!(_isWithinVotingPeriod(p.startTime, p.endTime))) revert PollNotActive();
+        if (!(optionId > 0 && optionId <= p.optionsCount)) revert InvalidOption();
+        if (hasVoted[pollId][voter]) revert AlreadyVoted();
+        if (delegationVoting.hasDelegated(pollId, voter)) revert VoteIsDelegated();
+        if (!(p.tokenVotingEnabled)) revert TokenVotingNotEnabled();
 
         // Use per-poll TokenManager for token operations
-        require(pollTokenManager[pollId] != address(0), "No TM");
+        if (!(pollTokenManager[pollId] != address(0))) revert NoTokenManager();
         uint voterBalance = TokenManager(pollTokenManager[pollId]).getTokenBalance(pollId, voter);
-        require(voterBalance >= 1, "Insufficient tokens");
+        if (!(voterBalance >= 1)) revert InsufficientTokens();
 
         // CEI: Update all state BEFORE external call
         hasVotedWithToken[pollId][voter] = true;
@@ -402,7 +400,7 @@ contract ElectionsManager is TokenIntegratedVoting {
         address[] calldata voters,
         uint256 tokensPerVoter
     ) external onlyAdminOrOwner(pollId) {
-        require(tokensPerVoter > 0, "Zero tokens");
+        if (!(tokensPerVoter > 0)) revert ZeroAmount();
 
         // First add voters (using existing logic)
         addVoters(pollId, voters);
@@ -425,7 +423,7 @@ contract ElectionsManager is TokenIntegratedVoting {
     function getVoterChoice(uint pollId, address voter) external view returns (uint) {
         Poll storage p = polls[pollId];
         // No admin bypass — voter choice hidden until reveal
-        require(p.revealed, "Not revealed");
+        if (!(p.revealed)) revert PollNotRevealed();
         return voterChoice[pollId][voter];
     }
 
@@ -446,24 +444,24 @@ contract ElectionsManager is TokenIntegratedVoting {
     }
 
     function isPollActive(uint pollId) external view returns (bool) {
-        require(polls[pollId].exists, "No poll");
+        if (!(polls[pollId].exists)) revert PollNotFound();
         Poll storage p = polls[pollId];
         return !_hasEnded(p.endTime) && _isWithinVotingPeriod(p.startTime, p.endTime);
     }
 
     function isPollStarted(uint pollId) external view returns (bool) {
-        require(polls[pollId].exists, "No poll");
+        if (!(polls[pollId].exists)) revert PollNotFound();
         return block.timestamp >= polls[pollId].startTime;
     }
 
     function isPollEnded(uint pollId) external view returns (bool) {
-        require(polls[pollId].exists, "No poll");
+        if (!(polls[pollId].exists)) revert PollNotFound();
         Poll storage p = polls[pollId];
         return _hasEnded(p.endTime);
     }
 
     function getPollStatus(uint pollId) external view returns (bool started, bool active, bool ended, bool revealed) {
-        require(polls[pollId].exists, "No poll");
+        if (!(polls[pollId].exists)) revert PollNotFound();
         Poll storage p = polls[pollId];
         
         started = block.timestamp >= p.startTime;
@@ -473,10 +471,10 @@ contract ElectionsManager is TokenIntegratedVoting {
     }
 
     function getWinner(uint pollId) external view returns (uint winningOptionId, string memory winningOptionName, uint winningVotes) {
-        require(polls[pollId].exists, "No poll");
+        if (!(polls[pollId].exists)) revert PollNotFound();
         Poll storage p = polls[pollId];
         // No admin bypass — winner hidden until reveal
-        require(p.revealed, "Not revealed");
+        if (!(p.revealed)) revert PollNotRevealed();
 
         uint maxVotes = 0;
         uint winnerId = 0;
@@ -496,8 +494,8 @@ contract ElectionsManager is TokenIntegratedVoting {
     }
 
     function revealResults(uint pollId) external {
-        require(polls[pollId].exists, "No poll");
-        require(!polls[pollId].revealed, "Already revealed.");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (polls[pollId].revealed) revert PollAlreadyRevealed();
 
         uint endTime = polls[pollId].endTime;
 
@@ -505,11 +503,10 @@ contract ElectionsManager is TokenIntegratedVoting {
             // Secret ballot: must wait for reveal period to finish
             // Read configurable reveal duration from SecretBallotManager
             uint revealDuration = ISecretBallotManager(secretBallotMgr).getRevealDuration(pollId);
-            require(block.timestamp >= endTime + TIME_BUFFER + revealDuration,
-                "Reveal period active");
+            if (!(block.timestamp >= endTime + TIME_BUFFER + revealDuration)) revert RevealPeriodActive();
         } else {
             // Standard poll: anyone can reveal after time-based end
-            require(_hasEnded(endTime), "Poll not ended");
+            if (!(_hasEnded(endTime))) revert PollNotEnded();
         }
 
         polls[pollId].revealed = true;
@@ -528,8 +525,8 @@ contract ElectionsManager is TokenIntegratedVoting {
      * @param maxChoices Maximum number of options a voter can select (2+)
      */
     function setMaxChoices(uint pollId, uint maxChoices) external onlyAdminOrOwner(pollId) {
-        require(polls[pollId].exists, "No poll");
-        require(!_hasStarted(polls[pollId].startTime), "Poll started");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (_hasStarted(polls[pollId].startTime)) revert PollStarted();
         multiChoiceVoting.configureMultiChoice(pollId, maxChoices, polls[pollId].optionsCount);
     }
 
@@ -539,16 +536,16 @@ contract ElectionsManager is TokenIntegratedVoting {
      * @param optionIds Array of option IDs to vote for
      */
     function voteMultiChoice(uint pollId, uint[] calldata optionIds) external {
-        require(polls[pollId].exists, "No poll");
-        require(!secretBallot[pollId], "Secret poll");
-        require(authorizedVoters[pollId][msg.sender], "Not voter");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (secretBallot[pollId]) revert SecretPoll();
+        if (!(authorizedVoters[pollId][msg.sender])) revert NotVoter();
         Poll storage p = polls[pollId];
-        require(_isWithinVotingPeriod(p.startTime, p.endTime), "Not active");
-        require(!hasVoted[pollId][msg.sender], "Already voted");
-        require(!delegationVoting.hasDelegated(pollId, msg.sender), "Delegated");
+        if (!(_isWithinVotingPeriod(p.startTime, p.endTime))) revert PollNotActive();
+        if (hasVoted[pollId][msg.sender]) revert AlreadyVoted();
+        if (delegationVoting.hasDelegated(pollId, msg.sender)) revert VoteIsDelegated();
 
         if (p.tokenVotingRequired) {
-            revert("Token voting required");
+            revert TokenVotingRequired();
         }
 
         // CEI: Update core state BEFORE external module call
@@ -557,7 +554,7 @@ contract ElectionsManager is TokenIntegratedVoting {
         voteMethod[pollId][msg.sender] = VoteMethod.GasPayment;
 
         for (uint i = 0; i < optionIds.length; i++) {
-            require(optionIds[i] > 0 && optionIds[i] <= p.optionsCount, "Invalid option.");
+            if (!(optionIds[i] > 0 && optionIds[i] <= p.optionsCount)) revert InvalidOption();
             options[pollId][optionIds[i]].votes += 1;
             p.totalVotes += 1;
         }
@@ -576,8 +573,8 @@ contract ElectionsManager is TokenIntegratedVoting {
      */
     function getVoterMultiChoices(uint pollId, address voter) external view returns (uint[] memory) {
         Poll storage p = polls[pollId];
-        require(p.exists, "No poll");
-        require(p.revealed, "Not revealed");
+        if (!(p.exists)) revert PollNotFound();
+        if (!(p.revealed)) revert PollNotRevealed();
         return multiChoiceVoting.getVoterMultiChoices(pollId, voter);
     }
 
@@ -590,9 +587,9 @@ contract ElectionsManager is TokenIntegratedVoting {
      * @param pollId Poll ID
      */
     function enableQuadraticVoting(uint pollId) external onlyAdminOrOwner(pollId) {
-        require(polls[pollId].exists, "No poll");
-        require(!_hasStarted(polls[pollId].startTime), "Poll started");
-        require(polls[pollId].tokenVotingEnabled, "Needs token voting");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (_hasStarted(polls[pollId].startTime)) revert PollStarted();
+        if (!(polls[pollId].tokenVotingEnabled)) revert TokenVotingRequired();
 
         quadraticVoting.setQuadraticVotingEnabled(pollId, true);
     }
@@ -610,13 +607,13 @@ contract ElectionsManager is TokenIntegratedVoting {
         uint[] calldata optionIds,
         uint[] calldata voteAmounts
     ) external {
-        require(polls[pollId].exists, "No poll");
-        require(!secretBallot[pollId], "Secret poll");
-        require(authorizedVoters[pollId][msg.sender], "Not voter");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (secretBallot[pollId]) revert SecretPoll();
+        if (!(authorizedVoters[pollId][msg.sender])) revert NotVoter();
         Poll storage p = polls[pollId];
-        require(_isWithinVotingPeriod(p.startTime, p.endTime), "Not active");
-        require(!hasVoted[pollId][msg.sender], "Already voted");
-        require(!delegationVoting.hasDelegated(pollId, msg.sender), "Delegated");
+        if (!(_isWithinVotingPeriod(p.startTime, p.endTime))) revert PollNotActive();
+        if (hasVoted[pollId][msg.sender]) revert AlreadyVoted();
+        if (delegationVoting.hasDelegated(pollId, msg.sender)) revert VoteIsDelegated();
 
         // CEI: Update voted flag BEFORE external module call
         hasVoted[pollId][msg.sender] = true;
@@ -629,9 +626,9 @@ contract ElectionsManager is TokenIntegratedVoting {
         );
 
         // Validate token cost
-        require(pollTokenManager[pollId] != address(0), "No TM");
+        if (!(pollTokenManager[pollId] != address(0))) revert NoTokenManager();
         uint voterBalance = TokenManager(pollTokenManager[pollId]).getTokenBalance(pollId, msg.sender);
-        require(voterBalance >= totalCost, "Low tokens");
+        if (!(voterBalance >= totalCost)) revert InsufficientTokens();
 
         // Update option vote tallies
         for (uint i = 0; i < optionIds.length; i++) {
@@ -652,8 +649,8 @@ contract ElectionsManager is TokenIntegratedVoting {
      */
     function getQuadraticVotes(uint pollId, address voter, uint optionId) external view returns (uint) {
         Poll storage p = polls[pollId];
-        require(p.exists, "No poll");
-        require(p.revealed, "Not revealed");
+        if (!(p.exists)) revert PollNotFound();
+        if (!(p.revealed)) revert PollNotRevealed();
         return quadraticVoting.getQuadraticVotes(pollId, voter, optionId);
     }
 
@@ -666,9 +663,9 @@ contract ElectionsManager is TokenIntegratedVoting {
      * @param pollId Poll ID
      */
     function enableDelegation(uint pollId) external onlyAdminOrOwner(pollId) {
-        require(polls[pollId].exists, "No poll");
-        require(!_hasStarted(polls[pollId].startTime), "Poll started");
-        require(!polls[pollId].tokenVotingEnabled, "No delegation");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (_hasStarted(polls[pollId].startTime)) revert PollStarted();
+        if (polls[pollId].tokenVotingEnabled) revert NoDelegationForTokenPolls();
         delegationEnabled[pollId] = true;
         emit DelegationEnabled(pollId);
     }
@@ -679,13 +676,12 @@ contract ElectionsManager is TokenIntegratedVoting {
      * @param delegatee Address to delegate to
      */
     function delegateVote(uint pollId, address delegatee) external {
-        require(polls[pollId].exists, "No poll");
-        require(delegationEnabled[pollId], "Delegation off");
-        require(authorizedVoters[pollId][msg.sender], "Not voter");
-        require(authorizedVoters[pollId][delegatee], "Bad delegatee");
-        require(!hasVoted[pollId][msg.sender], "Voted already");
-        require(!_hasStarted(polls[pollId].startTime) || _isWithinVotingPeriod(polls[pollId].startTime, polls[pollId].endTime),
-            "Deleg closed");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (!(delegationEnabled[pollId])) revert DelegationDisabled();
+        if (!(authorizedVoters[pollId][msg.sender])) revert NotVoter();
+        if (!(authorizedVoters[pollId][delegatee])) revert DelegateeNotAuthorized();
+        if (hasVoted[pollId][msg.sender]) revert AlreadyVoted();
+        if (!(!_hasStarted(polls[pollId].startTime) || _isWithinVotingPeriod(polls[pollId].startTime, polls[pollId].endTime))) revert DelegationClosed();
 
         delegationVoting.recordDelegation(pollId, msg.sender, delegatee);
     }
@@ -695,8 +691,8 @@ contract ElectionsManager is TokenIntegratedVoting {
      * @param pollId Poll ID
      */
     function removeDelegation(uint pollId) external {
-        require(polls[pollId].exists, "No poll");
-        require(!hasVoted[pollId][msg.sender], "Delegate voted");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (hasVoted[pollId][msg.sender]) revert DelegateAlreadyVoted();
 
         delegationVoting.removeDelegation(pollId, msg.sender);
     }
@@ -708,16 +704,16 @@ contract ElectionsManager is TokenIntegratedVoting {
      * @param delegator Address of the person who delegated their vote
      */
     function voteAsDelegate(uint pollId, uint optionId, address delegator) external {
-        require(polls[pollId].exists, "No poll");
-        require(delegationEnabled[pollId], "Delegation off");
-        require(!secretBallot[pollId], "Use commitVote");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (!(delegationEnabled[pollId])) revert DelegationDisabled();
+        if (secretBallot[pollId]) revert SecretPoll();
         Poll storage p = polls[pollId];
-        require(_isWithinVotingPeriod(p.startTime, p.endTime), "Not active");
-        require(optionId > 0 && optionId <= p.optionsCount, "Invalid option.");
-        require(!hasVoted[pollId][delegator], "Deleg voted");
+        if (!(_isWithinVotingPeriod(p.startTime, p.endTime))) revert PollNotActive();
+        if (!(optionId > 0 && optionId <= p.optionsCount)) revert InvalidOption();
+        if (hasVoted[pollId][delegator]) revert DelegateAlreadyVoted();
 
         if (p.tokenVotingRequired) {
-            revert("No delegation");
+            revert NoDelegationForTokenPolls();
         }
 
         // CEI: Update core state BEFORE external module call
@@ -769,8 +765,8 @@ contract ElectionsManager is TokenIntegratedVoting {
      * @param metadataURI IPFS URI (e.g., "ipfs://QmYwAPJzv5CZsnA...")
      */
     function setPollMetadata(uint pollId, string calldata metadataURI) external onlyAdminOrOwner(pollId) {
-        require(polls[pollId].exists, "No poll");
-        require(!_hasStarted(polls[pollId].startTime), "Poll started");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (_hasStarted(polls[pollId].startTime)) revert PollStarted();
 
         metadataVoting.setPollMetadata(pollId, metadataURI);
         emit PollMetadataSet(pollId, metadataURI);
@@ -782,7 +778,7 @@ contract ElectionsManager is TokenIntegratedVoting {
      * @return metadataURI The IPFS URI string
      */
     function getPollMetadata(uint pollId) external view returns (string memory) {
-        require(polls[pollId].exists, "No poll");
+        if (!(polls[pollId].exists)) revert PollNotFound();
         return metadataVoting.getPollMetadata(pollId);
     }
 
@@ -795,10 +791,10 @@ contract ElectionsManager is TokenIntegratedVoting {
      * @param pollId Poll ID
      */
     function enableSecretBallot(uint pollId) external onlyAdminOrOwner(pollId) {
-        require(polls[pollId].exists, "No poll");
-        require(!_hasStarted(polls[pollId].startTime), "Poll started");
-        require(!secretBallot[pollId], "Already enabled");
-        require(secretBallotMgr != address(0), "SBM not set");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (_hasStarted(polls[pollId].startTime)) revert PollStarted();
+        if (secretBallot[pollId]) revert SecretBallotAlreadyEnabled();
+        if (!(secretBallotMgr != address(0))) revert SBMNotSet();
 
         secretBallot[pollId] = true;
         emit SecretBallotEnabled(pollId);
@@ -810,7 +806,7 @@ contract ElectionsManager is TokenIntegratedVoting {
      * @param duration Duration in seconds (minimum 1 minute, 0 = use default)
      */
     function setRevealDuration(uint pollId, uint duration) external onlyAdminOrOwner(pollId) {
-        require(secretBallotMgr != address(0), "SBM not set");
+        if (!(secretBallotMgr != address(0))) revert SBMNotSet();
         ISecretBallotManager(secretBallotMgr).setRevealDuration(pollId, duration);
     }
 
@@ -819,7 +815,7 @@ contract ElectionsManager is TokenIntegratedVoting {
      * @param duration Duration in seconds (minimum 1 minute)
      */
     function setDefaultRevealDuration(uint duration) external onlyOwner {
-        require(secretBallotMgr != address(0), "SBM not set");
+        if (!(secretBallotMgr != address(0))) revert SBMNotSet();
         ISecretBallotManager(secretBallotMgr).setDefaultRevealDuration(duration);
     }
 
@@ -828,8 +824,8 @@ contract ElectionsManager is TokenIntegratedVoting {
      * @dev Locked after infrastructure is locked
      */
     function setSecretBallotManager(address _sbm) external onlyOwner {
-        require(_sbm != address(0), "Invalid address");
-        require(!infrastructureLocked, "Infra locked");
+        if (!(_sbm != address(0))) revert ZeroAddress();
+        if (infrastructureLocked) revert InfraLocked();
         secretBallotMgr = _sbm;
         emit SecretBallotManagerSet(_sbm);
     }
@@ -839,8 +835,8 @@ contract ElectionsManager is TokenIntegratedVoting {
      * @dev Locked after infrastructure is locked
      */
     function setFranchiseManager(address _fm) external onlyOwner {
-        require(_fm != address(0), "Invalid address");
-        require(!infrastructureLocked, "Infra locked");
+        if (!(_fm != address(0))) revert ZeroAddress();
+        if (infrastructureLocked) revert InfraLocked();
         franchiseMgr = _fm;
         emit FranchiseManagerSet(_fm);
     }
@@ -852,12 +848,12 @@ contract ElectionsManager is TokenIntegratedVoting {
      *      and prevents duplicate vote recording.
      */
     function recordSecretVote(uint pollId, address voter, uint optionId, bool isToken) external {
-        require(msg.sender == secretBallotMgr, "Only SBM");
-        require(polls[pollId].exists, "No poll");
-        require(secretBallot[pollId], "Not SB");
-        require(authorizedVoters[pollId][voter], "Not authorized");
-        require(!hasVoted[pollId][voter], "Already voted");
-        require(optionId > 0 && optionId <= polls[pollId].optionsCount, "Invalid option");
+        if (!(msg.sender == secretBallotMgr)) revert Unauthorized();
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (!(secretBallot[pollId])) revert NotSecretBallot();
+        if (!(authorizedVoters[pollId][voter])) revert Unauthorized();
+        if (hasVoted[pollId][voter]) revert AlreadyVoted();
+        if (!(optionId > 0 && optionId <= polls[pollId].optionsCount)) revert InvalidOption();
 
         Poll storage p = polls[pollId];
         hasVoted[pollId][voter] = true;
@@ -875,21 +871,21 @@ contract ElectionsManager is TokenIntegratedVoting {
      *      Validates voter authorization, poll state, token voting status.
      */
     function burnTokenForCommit(uint pollId, address voter) external {
-        require(msg.sender == secretBallotMgr, "Only SBM");
-        require(polls[pollId].tokenVotingEnabled, "No token vote");
+        if (!(msg.sender == secretBallotMgr)) revert Unauthorized();
+        if (!(polls[pollId].tokenVotingEnabled)) revert TokenVotingNotEnabled();
         address tm = pollTokenManager[pollId];
-        require(tm != address(0), "No TM");
+        if (!(tm != address(0))) revert NoTokenManager();
         hasVotedWithToken[pollId][voter] = true;
         TokenManager(tm).burnTokensForVote(pollId, voter);
     }
 
     // clear revert reasons for unsupported interactions (helps debugging / tooling)
     receive() external payable {
-        revert("No plain ether");
+        revert NoPlainEther();
     }
 
     fallback() external payable {
-        revert("Unknown function");
+        revert UnknownFunction();
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -901,18 +897,15 @@ contract ElectionsManager is TokenIntegratedVoting {
      * @dev FranchiseManager can only change admin of polls it created
      */
     function changePollAdmin(uint pollId, address newAdmin) external {
-        require(polls[pollId].exists, "No poll");
-        require(newAdmin != address(0), "Bad admin");
-        require(newAdmin != polls[pollId].admin, "Same admin");
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (!(newAdmin != address(0))) revert ZeroAddress();
+        if (!(newAdmin != polls[pollId].admin)) revert SameAddress();
 
         bool isPollAdmin = msg.sender == polls[pollId].admin;
         bool isOwner = msg.sender == owner;
         bool isFranchiseMgr = msg.sender == franchiseMgr && isFranchisePoll[pollId];
 
-        require(
-            isPollAdmin || isOwner || isFranchiseMgr,
-            "Not authorized"
-        );
+        if (!(isPollAdmin || isOwner || isFranchiseMgr)) revert Unauthorized();
         address oldAdmin = polls[pollId].admin;
         polls[pollId].admin = newAdmin;
         emit PollAdminChanged(pollId, oldAdmin, newAdmin);

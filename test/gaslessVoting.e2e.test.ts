@@ -250,7 +250,7 @@ describe("Gasless Voting - End-to-End Integration", function () {
         votingPaymaster
           .connect(relayer)
           .executeVoteWithToken(pollId, 1, voter1.address, deadline, sig.v, sig.r, sig.s)
-      ).to.be.revertedWith("Invalid signature");
+      ).to.be.revertedWithCustomError(votingPaymaster, "InvalidSignature");
     });
 
     it("should reject expired signatures", async function () {
@@ -262,7 +262,7 @@ describe("Gasless Voting - End-to-End Integration", function () {
         votingPaymaster
           .connect(relayer)
           .executeVoteWithToken(pollId, 1, voter1.address, expiredDeadline, sig.v, sig.r, sig.s)
-      ).to.be.revertedWith("Signature expired");
+      ).to.be.revertedWithCustomError(votingPaymaster, "SignatureExpired");
     });
 
     it("should reject zero address voter (L-2)", async function () {
@@ -275,7 +275,7 @@ describe("Gasless Voting - End-to-End Integration", function () {
         votingPaymaster
           .connect(relayer)
           .executeVoteWithToken(pollId, 1, ethers.ZeroAddress, deadline, sig.v, sig.r, sig.s)
-      ).to.be.revertedWith("Invalid voter");
+      ).to.be.revertedWithCustomError(votingPaymaster, "ZeroAddress");
     });
 
     it("should prevent voting without tokens via paymaster", async function () {
@@ -287,7 +287,7 @@ describe("Gasless Voting - End-to-End Integration", function () {
         votingPaymaster
           .connect(relayer)
           .executeVoteWithToken(pollId, 1, voter2.address, deadline, sig.v, sig.r, sig.s)
-      ).to.be.revertedWith("Insufficient vote tokens");
+      ).to.be.revertedWithCustomError(votingPaymaster, "InsufficientTokens");
     });
 
     it("should track gas consumption", async function () {

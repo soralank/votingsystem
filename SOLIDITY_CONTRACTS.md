@@ -1,219 +1,233 @@
-# Solidity Contracts Documentation
+# Solidity Contract Reference
 
-Comprehensive documentation for all smart contracts in the Voting System v4.1.
+**Voting System v4.1** | **Compiler:** Solidity 0.8.28 | **Optimizer:** 100 runs, viaIR enabled
 
----
-
-## Contract Overview
-
-| Contract | Size | Purpose |
-|----------|------|---------|
-| **ElectionsManager.sol** | 23,932 bytes | Main voting contract with all features || **MultiChoiceVoting.sol** | ~1,000 bytes | Module: multi-choice vote state |
-| **QuadraticVoting.sol** | ~1,000 bytes | Module: quadratic vote state |
-| **DelegationVoting.sol** | ~1,000 bytes | Module: delegation state |
-| **MetadataVoting.sol** | ~800 bytes | Module: IPFS metadata state || **FranchiseManager.sol** | ~4,320 bytes | Sub-admin franchise system |
-| **SecretBallotManager.sol** | ~4,500 bytes | Commit-reveal voting for secret ballot |
-| **TokenIntegratedVoting.sol** | (base) | Token integration + infrastructure lock |
-| **TokenManager.sol** | ~6,000 bytes | Per-poll ERC20 token factory |
-| **VotingPaymaster.sol** | ~5,500 bytes | Gas sponsorship via EIP-712 |
-| **VotingToken.sol** | ~3,500 bytes | Non-transferable burnable ERC20 |
-| **TimeValidator.sol** | (base) | Time validation rules |
-| **Ownable.sol** | (base) | Two-step ownership |
+This document is the authoritative technical reference for every contract in the system. For design rationale, threat model, and economic model, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ---
 
-## Inheritance Hierarchy
+## Inheritance & Deployment Topology
 
 ```
-Ownable.sol
-  └── TimeValidator.sol
-        └── TokenIntegratedVoting.sol
-              └── ElectionsManager.sol
+INHERITANCE CHAIN
+─────────────────
+  TimeValidator.sol
+        │
+  TokenIntegratedVoting.sol
+        │
+  ElectionsManager.sol
+        │
+  Voting.sol  ← deployment entry point
 
-Standalone:
-  - SecretBallotManager.sol (interacts with ElectionsManager via IElectionsManager interface)
-  - FranchiseManager.sol (creates polls via ElectionsManager.createPoll)
-  - TokenManager.sol (called by ElectionsManager)
-  - VotingPaymaster.sol (calls ElectionsManager)
-  - VotingToken.sol (created by TokenManager)
-  - MultiChoiceVoting.sol (owned by ElectionsManager, stores multi-choice state)
-  - QuadraticVoting.sol (owned by ElectionsManager, stores quadratic state)
-  - DelegationVoting.sol (owned by ElectionsManager, stores delegation state)
-  - MetadataVoting.sol (owned by ElectionsManager, stores metadata state)
+
+AUTO-DEPLOYED MODULES (constructor of ElectionsManager)
+───────────────────────────────────────────────────────
+  MultiChoiceVoting.sol     QuadraticVoting.sol
+  DelegationVoting.sol      MetadataVoting.sol
+
+
+STANDALONE CONTRACTS (deployed separately, linked via interfaces)
+────────────────────────────────────────────────────────────────
+  SecretBallotManager.sol   FranchiseManager.sol
+  TokenManager.sol          VotingPaymaster.sol
+  VotingToken.sol           VotingReader.sol
 ```
+
+> `Ownable.sol` exists in the repository but is **deprecated and unused**. Ownership is implemented directly in `TokenIntegratedVoting.sol`.
 
 ---
 
 ## 1. ElectionsManager.sol
 
-**Inherits**: TokenIntegratedVoting → TimeValidator → Ownable
+**Inherits:** TokenIntegratedVoting → TimeValidator
+**Size:** ~23,932 bytes (near the 24,576-byte EIP-170 limit)
 
-The main contract (~841 lines, 24,411 bytes). Handles poll creation, voter authorization, voting, results, and all trust features.
+The core contract. Manages poll lifecycle, voter authorisation, voting (5 methods), result revelation, and orchestrates all module contracts.
 
 ### Constants
 
 | Name | Value | Purpose |
 |------|-------|---------|
-| `MAX_OPTIONS` | 100 | Max options per poll (DoS prevention) |
-| `MAX_VOTERS_BATCH` | 50 | Max voters per batch operation |
+| `MAX_OPTIONS` | 100 | Maximum options per poll (DoS prevention) |
+| `MAX_VOTERS_BATCH` | 50 | Maximum voters per batch operation |
 
-### State Variables
+### State
 
 ```solidity
 uint public pollsCount;
-mapping(string => bool) public pollTitles;           // Prevent duplicate titles
-mapping(uint => Poll) public polls;                  // Poll data
-mapping(uint => mapping(uint => Option)) private options;  // PRIVATE: vote counts
-mapping(uint => mapping(uint => string)) internal pollOptionNames;  // Option names
-mapping(uint => mapping(address => uint)) private voterChoice;  // PRIVATE: individual votes
+
+// Duplicate prevention
+mapping(string => bool) public pollTitles;
+mapping(uint => mapping(string => bool)) public pollOptionNames;
+
+// Poll data
+mapping(uint => Poll) public polls;
+mapping(uint => mapping(uint => Option)) private options;         // vote counts (private)
+mapping(uint => mapping(address => uint)) private voterChoice;    // individual votes (private)
 mapping(uint => mapping(address => bool)) public hasVoted;
 mapping(uint => mapping(address => bool)) public authorizedVoters;
-mapping(uint => bool) public secretBallot;           // Trust: secret ballot flag
-address public secretBallotMgr;                      // Trust: SBM address
-address public franchiseMgr;                         // Franchise manager address
-mapping(uint => address) public pollTokenManager;    // Per-poll custom TokenManager
-mapping(uint => address) public pollVotingPaymaster; // Per-poll custom VotingPaymaster
+mapping(uint256 => mapping(address => VoteMethod)) public voteMethod;
 
-// Module contract references (auto-deployed in constructor)
+// Per-poll infrastructure
+mapping(uint => address) public pollTokenManager;
+mapping(uint => address) public pollVotingPaymaster;
+
+// Trust features
+mapping(uint => bool) public secretBallot;
+mapping(uint => bool) public delegationEnabled;
+address public secretBallotMgr;
+address public franchiseMgr;
+
+// Module contracts (auto-deployed)
 MultiChoiceVoting public multiChoiceVoting;
 QuadraticVoting public quadraticVoting;
 DelegationVoting public delegationVoting;
 MetadataVoting public metadataVoting;
 ```
 
-### Key Functions
+> **Privacy note:** `options` and `voterChoice` are `private` to prevent access from other contracts. This does **not** encrypt data on-chain; raw values are readable via `eth_getStorageAt`. See [ARCHITECTURE.md §4.4](./ARCHITECTURE.md) for the full privacy disclosure.
 
-#### Poll Management
-- **`createPoll(title, admin, startTime, durationSeconds, enableTokenVoting, requireTokenVoting, customTokenManager, customVotingPaymaster)`** — Creates a new poll (8 params). Pass `address(0)` for custom managers to use global defaults. Calls `_lockInfrastructure()` to permanently lock contract addresses. Only owner or franchise manager.
-- **`addOptionToPoll(pollId, optionName)`** — Add voting option before poll starts. Admin or owner.
-- **`addVoters(pollId, voters[])`** — Authorize voters in batch. Admin or owner.
-- **`addVotersWithTokens(pollId, voters[], tokensPerVoter)`** — Authorize voters and allocate tokens. Admin or owner.
-- **`removeVoter(pollId, voter)`** — Remove voter authorization before poll starts.
+### Poll Struct
 
-#### Voting (all reject secret ballot polls)
-- **`voteInPoll(pollId, optionId)`** — Traditional vote (voter pays gas).
-- **`voteInPollWithToken(pollId, optionId, voter)`** — Token vote (burns token).
-- **`voteMultiChoice(pollId, optionIds[])`** — Multi-choice vote.
-- **`voteQuadratic(pollId, optionIds[], amounts[])`** — Quadratic vote.
-- **`voteAsDelegate(pollId, optionId, delegator)`** — Vote on behalf of delegator.
+```solidity
+struct Poll {
+    string title;
+    address admin;
+    uint startTime;              // Unix timestamp (UTC)
+    uint endTime;                // Computed: startTime + durationSeconds
+    bool revealed;
+    bool ended;
+    uint totalVotes;
+    uint optionsCount;
+    bool exists;
+    bool tokenVotingEnabled;
+    bool tokenVotingRequired;
+}
+```
 
-#### Trust Features
-- **`enableSecretBallot(pollId)`** — Enable commit-reveal for a poll. Requires SBM to be set (`secretBallotMgr != address(0)`). Before start, admin/owner.
-- **`setSecretBallotManager(address)`** — Set SBM address. Only before infrastructure lock.
-- **`setFranchiseManager(address)`** — Set franchise manager address. Only before infrastructure lock.
-- **`revealResults(pollId)`** — Reveal results. **Anyone** can call after endTime + buffer + reveal duration (configurable per-poll).
-- **`setRevealDuration(pollId, duration)`** — Set per-poll reveal duration (forwards to SBM). Admin/owner. Minimum 1 minute, 0 = use default.
-- **`setDefaultRevealDuration(duration)`** — Set default reveal duration for all future polls (forwards to SBM). Owner only. Minimum 1 minute.
-- **`recordSecretVote(pollId, voter, optionId, isToken)`** — Callback from SBM only.
-- **`burnTokenForCommit(pollId, voter)`** — Callback from SBM for token commits.
-- **`setPollMetadata(pollId, uri)`** — Set IPFS metadata. Only before poll startTime.
+### Functions — Poll Management
 
-#### View Functions
-- **`getOption(pollId, optionId)`** — Returns (id, name, voteCount). Before reveal: voteCount is always 0 (privacy protection); after reveal: shows actual count.
-- **`getVoterChoice(pollId, voter)`** — Get voter's choice. Requires `revealed == true`.
-- **`getWinner(pollId)`** — Get winning option. Requires `revealed == true`.
-- **`getVoterMultiChoices(pollId, voter)`** — Get multi-choice selections. Requires `revealed == true`.
-- **`getQuadraticVotes(pollId, voter, optionId)`** — Get quadratic allocation. Requires `revealed == true`.
-- **`getPollStatus(pollId)`** — Returns (started, active, ended, revealed).
-- **`getPollStartTime(pollId)`** / **`getPollEndTime(pollId)`** — Get poll time boundaries.
-- **`isPollActive(pollId)`** / **`isPollStarted(pollId)`** / **`isPollEnded(pollId)`** — Poll state checks.
-- **`isVoterAuthorized(pollId, voter)`** — Check voter authorization.
-- **`hasVoterVoted(pollId, voter)`** — Check if voter has voted.
-- **`hasDelegated(pollId, voter)`** — Check if voter has delegated (wrapper to DelegationVoting module).
-- **`getDelegationInfo(pollId, voter)`** — Returns (delegatee, isDelegated, delegationsReceived).
-- **`getPollMetadata(pollId)`** — Get IPFS metadata URI (reads from MetadataVoting module).
-- **`getTotalVotes(pollId)`** / **`getOptionsCount(pollId)`** — Poll statistics.
+| Function | Access | Description |
+|----------|--------|-------------|
+| `createPoll(title, admin, startTime, durationSeconds, enableTokenVoting, requireTokenVoting, customTokenManager, customVotingPaymaster)` | Owner or FranchiseManager | Creates a poll. Locks infrastructure on first call. Pass `address(0)` for custom managers to use global defaults. |
+| `addOptionToPoll(pollId, name)` | Admin or Owner | Add a voting option. Before start only. Rejects duplicate names. |
+| `addVoter(pollId, voter)` | Admin or Owner | Authorise a single voter. Before start only. |
+| `addVoters(pollId, voters[])` | Admin or Owner | Batch authorise (max 50). Before start only. Skips duplicates silently. |
+| `addVotersWithTokens(pollId, voters[], tokensPerVoter)` | Admin or Owner | Authorise + allocate tokens. Before start only. |
+| `removeVoter(pollId, voter)` | Admin or Owner | Revoke authorisation. Before start only. Cannot remove voters who already voted. |
+
+### Functions — Voting
+
+All 5 vote functions reject secret ballot polls (must use SecretBallotManager commit-reveal flow).
+
+| Function | Access | Description |
+|----------|--------|-------------|
+| `voteInPoll(pollId, optionId)` | Authorised Voter | Traditional vote. Voter pays gas. Reverts if `tokenVotingRequired == true`. |
+| `voteInPollWithToken(pollId, optionId, voter)` | Voter or Paymaster | Token vote. Burns 1 token. Callable by voter directly or by paymaster on voter's behalf. |
+| `voteMultiChoice(pollId, optionIds[])` | Authorised Voter | Multi-choice vote. Requires `setMaxChoices()` configured. Reverts if `tokenVotingRequired == true`. |
+| `voteQuadratic(pollId, optionIds[], voteAmounts[])` | Authorised Voter | Quadratic vote. Cost = Σ(voteAmounts[i]²) tokens. Requires token-enabled poll. |
+| `voteAsDelegate(pollId, optionId, delegator)` | Delegate | Vote on behalf of delegator. Requires delegation enabled and active delegation. |
+
+### Functions — Trust & Configuration
+
+| Function | Access | Description |
+|----------|--------|-------------|
+| `enableSecretBallot(pollId)` | Admin or Owner | Enable commit-reveal. Before start only. Requires `secretBallotMgr` to be set. |
+| `setRevealDuration(pollId, duration)` | Admin or Owner | Set per-poll reveal duration (forwards to SBM). Min 1 minute; 0 = use default. |
+| `setDefaultRevealDuration(duration)` | Owner | Set global default reveal duration (forwards to SBM). Min 1 minute. |
+| `enableDelegation(pollId)` | Admin or Owner | Enable vote delegation. Before start only. Incompatible with token-enabled polls. |
+| `setMaxChoices(pollId, maxChoices)` | Admin or Owner | Configure multi-choice (min 2). Before start only. |
+| `enableQuadraticVoting(pollId)` | Admin or Owner | Enable quadratic voting. Requires token-enabled poll. Before start only. |
+| `setPollMetadata(pollId, uri)` | Admin or Owner | Set IPFS metadata URI. Before start only. |
+| `setSecretBallotManager(addr)` | Owner | Set SBM address. Before infrastructure lock only. |
+| `setFranchiseManager(addr)` | Owner | Set franchise manager. Before infrastructure lock only. |
+| `revealResults(pollId)` | **Anyone** | Reveal results after `endTime + TIME_BUFFER` (standard) or `endTime + TIME_BUFFER + revealDuration` (secret ballot). |
+| `changePollAdmin(pollId, newAdmin)` | Admin, Owner, or FranchiseManager | Transfer poll admin. FranchiseManager can only change admin of polls it created. |
+
+### Functions — View
+
+| Function | Returns | Access Restriction |
+|----------|---------|-------------------|
+| `getOption(pollId, optionId)` | `(id, name, votes)` | Vote count is 0 until `revealed == true` |
+| `getVoterChoice(pollId, voter)` | `uint optionId` | Requires `revealed == true` |
+| `getWinner(pollId)` | `(optionId, name, votes)` | Requires `revealed == true` |
+| `getVoterMultiChoices(pollId, voter)` | `uint[] optionIds` | Requires `revealed == true` |
+| `getQuadraticVotes(pollId, voter, optionId)` | `uint votes` | Requires `revealed == true` |
+| `getPollStatus(pollId)` | `(started, active, ended, revealed)` | Public |
+| `getDelegationInfo(pollId, voter)` | `(delegatee, isDelegated, delegationsReceived)` | Public |
+| `getPollMetadata(pollId)` | `string metadataURI` | Public |
 
 ### Events
 
 ```solidity
-event PollCreated(uint indexed pollId, string title, address indexed admin, uint startTime, uint endTime, bool tokenVotingEnabled, bool tokenVotingRequired);
+event PollCreated(uint indexed pollId, string title, address indexed admin,
+                  uint startTime, uint endTime, bool tokenVotingEnabled, bool tokenVotingRequired);
 event OptionAdded(uint indexed pollId, uint indexed optionId, string name);
 event Voted(uint indexed pollId, address indexed voter, uint indexed optionId, VoteMethod method);
 event ResultsRevealed(uint indexed pollId);
 event VoterAuthorized(uint indexed pollId, address indexed voter);
 event VoterUnauthorized(uint indexed pollId, address indexed voter);
-event MultiChoiceConfigured(uint indexed pollId, uint maxChoices);
 event VotedMultiChoice(uint indexed pollId, address indexed voter, uint[] optionIds, VoteMethod method);
-event QuadraticVotingEnabled(uint indexed pollId);
-event VotedQuadratic(uint indexed pollId, address indexed voter, uint[] optionIds, uint[] voteAmounts, uint totalCost);
-event VoteDelegated(uint indexed pollId, address indexed delegator, address indexed delegatee);
-event DelegationRemoved(uint indexed pollId, address indexed delegator, address indexed previousDelegatee);
-event VotedAsDelegate(uint indexed pollId, address indexed delegate, address indexed delegator, uint optionId);
 event PollMetadataSet(uint indexed pollId, string metadataURI);
 event SecretBallotEnabled(uint indexed pollId);
 event SecretBallotManagerSet(address indexed manager);
 event FranchiseManagerSet(address indexed manager);
-event TokenManagerSet(address indexed tokenManager);
-event PaymasterSet(address indexed paymaster);
-event InfrastructureLocked();
-event VotedWithToken(uint indexed pollId, address indexed voter, uint indexed optionId);
+event DelegationEnabled(uint indexed pollId);
+event PollAdminChanged(uint indexed pollId, address indexed oldAdmin, address indexed newAdmin);
 ```
 
-> **Note**: Multi-choice, quadratic, delegation, and metadata events are emitted by the respective module contracts, not ElectionsManager directly. ElectionsManager re-emits `PollMetadataSet` for convenience.
+Module events (`MultiChoiceConfigured`, `QuadraticVotingEnabled`, `VotedQuadratic`, `VoteDelegated`, `DelegationRemoved`, `VotedAsDelegate`) are emitted by the respective module contracts, not by ElectionsManager.
 
 ---
 
 ## 2. SecretBallotManager.sol
 
-**Standalone** (interacts with ElectionsManager via `IElectionsManager` interface)
-
-Handles the commit-reveal voting mechanism. Deployed separately to keep ElectionsManager under the 24KB contract size limit.
+**Standalone.** Deployed separately due to the 24 KB contract size limit.
+Handles commit-reveal voting via the `IElectionsManager` interface.
 
 ### Constants
 
 | Name | Value | Purpose |
 |------|-------|---------|
+| `TIME_BUFFER` | 30 seconds | Buffer between poll end and reveal start (matches TimeValidator) |
 | `MIN_REVEAL_DURATION` | 1 minute | Minimum configurable reveal duration |
-| `TIME_BUFFER` | 30 seconds | Buffer between end and reveal start |
 
-### State Variables
+### State
 
 ```solidity
 IElectionsManager public electionsManager;
 address public owner;
-uint public defaultRevealDuration = 1 hours;             // Configurable default
-mapping(uint => uint) public pollRevealDuration;          // Per-poll custom duration (0 = use default)
-mapping(uint => mapping(address => bytes32)) private voteCommitments;  // PRIVATE
+uint public defaultRevealDuration = 1 hours;
+mapping(uint => uint) public pollRevealDuration;        // 0 = use default
+mapping(uint => mapping(address => bytes32)) private voteCommitments;
 mapping(uint => mapping(address => bool)) public hasCommitted;
 mapping(uint => mapping(address => bool)) public hasRevealed;
 mapping(uint => uint) public commitCount;
 mapping(uint => uint) public revealCount;
 ```
 
-### Modifiers
-
-- **`onlyOwner`** — Restricts to contract owner.
-- **`onlyOwnerOrElectionsManager`** — Allows calls from owner OR the ElectionsManager contract (enables EM proxy functions).
-
-### Functions
-
-- **`commitVote(pollId, commitHash)`** — Commit a vote hash during voting period. Validates: secret ballot enabled, voter authorized, poll active, not already committed.
-- **`commitVoteWithToken(pollId, commitHash)`** — Commit + burn token at commit time via `ElectionsManager.burnTokenForCommit()`.
-- **`revealVote(pollId, optionId, salt)`** — Reveal vote in the reveal window. Verifies `keccak256(pollId, optionId, salt, msg.sender) == stored hash`. Calls `ElectionsManager.recordSecretVote()`.
-- **`setDefaultRevealDuration(duration)`** — Set default reveal duration for new polls. Owner or ElectionsManager. Minimum 1 minute.
-- **`setRevealDuration(pollId, duration)`** — Set per-poll reveal duration. Owner or ElectionsManager. 0 = use default, otherwise minimum 1 minute.
-- **`getRevealDuration(pollId)`** — Returns effective reveal duration for a poll (custom if set, otherwise default).
-- **`isInCommitPhase(pollId)`** — Returns true if poll is currently active.
-- **`isInRevealPhase(pollId)`** — Returns true if in `[endTime + buffer, endTime + buffer + revealDuration]`.
-- **`getRevealDeadline(pollId)`** — Returns `endTime + TIME_BUFFER + getRevealDuration(pollId)`.
-- **`getSecretBallotStatus(pollId)`** — Returns (commits, reveals, isSecretBallot, inCommitPhase, inRevealPhase).
-
-### Commitment Hash Format
+### Commitment Hash
 
 ```solidity
 keccak256(abi.encodePacked(pollId, optionId, salt, voterAddress))
 ```
 
-Frontend example:
-```javascript
-const salt = ethers.randomBytes(32);
-const hash = ethers.solidityPackedKeccak256(
-  ["uint256", "uint256", "bytes32", "address"],
-  [pollId, optionId, salt, voterAddress]
-);
-await secretBallotManager.commitVote(pollId, hash);
-```
+The `optionId` is **never** sent during commit — only the hash. The actual vote is hidden until reveal.
+
+### Functions
+
+| Function | Access | Description |
+|----------|--------|-------------|
+| `commitVote(pollId, commitHash)` | Authorised Voter | Submit hash during voting period. Reverts if `tokenVotingRequired`. |
+| `commitVoteWithToken(pollId, commitHash)` | Authorised Voter | Submit hash + burn token at commit time (prevents double-commit). |
+| `revealVote(pollId, optionId, salt)` | Committer | Reveal during the window `[endTime + TIME_BUFFER, endTime + TIME_BUFFER + revealDuration]`. Calls `electionsManager.recordSecretVote()`. |
+| `setDefaultRevealDuration(duration)` | Owner or EM | Global default. Min 1 minute. |
+| `setRevealDuration(pollId, duration)` | Owner or EM | Per-poll override. 0 = use default. Before poll start only. |
+| `getRevealDuration(pollId)` | Public | Returns effective duration (custom if set, else default). |
+| `isInCommitPhase(pollId)` | Public | True if poll is active. |
+| `isInRevealPhase(pollId)` | Public | True if in reveal window. |
+| `getRevealDeadline(pollId)` | Public | `endTime + TIME_BUFFER + revealDuration`. |
+| `getSecretBallotStatus(pollId)` | Public | Returns (commits, reveals, isSecretBallot, inCommitPhase, inRevealPhase). |
 
 ### Events
 
@@ -226,206 +240,177 @@ event VoteRevealed(uint indexed pollId, address indexed voter, uint indexed opti
 
 ## 3. FranchiseManager.sol
 
-**Standalone** (creates polls via `ElectionsManager.createPoll`)
+**Standalone.** Creates polls via `ElectionsManager.createPoll()`.
 
-Manages time-limited sub-admin franchises. Franchise holders can create polls on behalf of the system owner, subject to configurable limits.
+### Design Rules
 
-### Key Rules
-
-- **1st poll free**, subsequent polls require ETH fee payment
-- **Non-revocable**: Franchises end only by time expiry, poll exhaustion, or supersede
-- **Addable**: Owner can add more polls to an active franchise (up to 100 cap)
-- **Supersedable**: Owner can grant a new franchise to same address (old polls preserved)
-- **Transferable**: Franchisee can request transfer (requires ETH fee + owner approval)
-- **No time extensions**: Cannot extend the time limit after grant
-- **No sub-franchises**: Franchisees cannot create sub-franchises
-- **Max 100 polls** per franchise
-
-### State Variables
-
-```solidity
-uint public franchiseCount;                           // Total franchises ever granted
-uint public transferFee;                              // ETH fee for franchise transfers
-mapping(uint => Franchise) public franchises;         // franchiseId => Franchise
-mapping(address => uint) public franchiseeToId;       // franchisee address => active ID
-mapping(uint => TransferRequest) public transferRequests;  // pending transfer requests
-```
+- First poll is free; subsequent polls cost `feePerPoll` in ETH
+- Franchises are **irrevocable** — they end only by: time expiry, poll exhaustion, or supersede
+- Owner can add polls to an active franchise (up to 100 cap) but **cannot extend time**
+- Franchisees cannot create sub-franchises
+- Transfer requires ETH fee + owner approval; `pendingRefunds` tracking prevents owner from draining deposits
 
 ### Franchise Struct
 
 ```solidity
 struct Franchise {
-    address franchisee;    // Current franchise holder
-    uint expiresAt;        // Unix timestamp when franchise expires
-    uint maxPolls;         // Maximum polls allowed (1-100)
-    uint pollsUsed;        // Polls created so far
-    uint feePerPoll;       // ETH fee per poll (first poll always free)
-    address tokenManager;  // Custom TokenManager for franchise polls (0x0 = global)
-    address votingPaymaster; // Custom VotingPaymaster for franchise polls (0x0 = global)
+    address franchisee;
+    uint256 expiresAt;
+    uint256 maxPolls;           // 1–100
+    uint256 pollsUsed;
+    uint256 feePerPoll;         // wei (charged from 2nd poll onward)
+    address tokenManager;       // custom or address(0) for global
+    address votingPaymaster;    // custom or address(0) for global
 }
 ```
 
-### Key Functions
+### Functions
 
-- **`grantFranchise(franchisee, durationSeconds, maxPolls, feePerPoll, tokenManager, votingPaymaster)`** — Owner grants a new franchise (6 params). Pass `address(0)` for tokenManager/votingPaymaster to use global defaults. If address already has an active franchise, supersedes it. Emits `FranchiseGranted` (+ `FranchiseSuperseded` if applicable).
-- **`addPolls(franchiseId, additionalPolls)`** — Owner increases maxPolls on active franchise (capped at 100). Emits `PollsAdded`.
-- **`createFranchisePoll(title, startTime, duration, enableTokenVoting, requireTokenVoting)`** — Franchisee creates a poll (1st free, fee required after). Emits `FranchisePollCreated`.
-- **`requestTransfer(franchiseId, newFranchisee)`** — Franchisee requests transfer (must pay transfer fee). Emits `TransferRequested`.
-- **`approveTransfer(franchiseId)`** — Owner approves pending transfer. Emits `TransferApproved`.
-- **`rejectTransfer(franchiseId)`** — Owner rejects transfer (refunds fee). Emits `TransferRejected`.
-- **`withdrawFees()`** — Owner withdraws accumulated fees. Emits `FeesWithdrawn`.
-- **`setTransferFee(fee)`** — Owner sets transfer fee. Emits `TransferFeeSet`.
-- **`getFranchise(id)`** — View: returns franchise details + `expired` and `exhausted` booleans.
-- **`isFranchiseActive(id)`** — View: returns true if franchise is not expired and not exhausted.
-- **`remainingPolls(id)`** — View: returns remaining polls (0 if expired).
+| Function | Access | Description |
+|----------|--------|-------------|
+| `grantFranchise(franchisee, durationSeconds, maxPolls, feePerPoll, tokenManager, votingPaymaster)` | Owner | Grant franchise. Supersedes any existing franchise for the same address. |
+| `addPolls(franchiseId, additionalPolls)` | Owner | Increase maxPolls on active franchise (capped at 100). |
+| `createFranchisePoll(title, startTime, durationSeconds, enableTokenVoting, requireTokenVoting)` | Franchisee | Create poll (1st free, fee required after). Excess ETH refunded. |
+| `requestTransfer(franchiseId, newFranchisee)` | Franchisee | Pay `transferFee` and request transfer. |
+| `approveTransfer(franchiseId)` | Owner | Approve pending transfer. Transfers admin of all franchise polls. |
+| `rejectTransfer(franchiseId)` | Owner | Reject and refund transfer fee. |
+| `withdrawFees()` | Owner | Withdraw accumulated fees (`balance - pendingRefunds`). |
+| `setTransferFee(fee)` | Owner | Set transfer fee in wei. |
+
+### Events
+
+```solidity
+event FranchiseGranted(uint256 indexed franchiseId, address indexed franchisee,
+                       uint256 expiresAt, uint256 maxPolls, uint256 feePerPoll);
+event FranchisePollCreated(uint256 indexed franchiseId, uint256 indexed pollId, uint256 feePaid);
+event TransferRequested(uint256 indexed franchiseId, address indexed from,
+                        address indexed to, uint256 feePaid);
+event TransferApproved(uint256 indexed franchiseId, address indexed oldFranchisee,
+                       address indexed newFranchisee);
+event TransferRejected(uint256 indexed franchiseId);
+event FranchiseSuperseded(uint256 indexed oldFranchiseId, uint256 indexed newFranchiseId,
+                          address indexed franchisee);
+event PollsAdded(uint256 indexed franchiseId, uint256 additionalPolls, uint256 newMaxPolls);
+event FeesWithdrawn(address indexed to, uint256 amount);
+event PollAdminTransferFailed(uint256 indexed pollId);
+```
 
 ---
 
-## 4. Module Contracts (Auto-Deployed)
+## 4. Module Contracts
 
-ElectionsManager deploys these 4 lightweight contracts in its constructor. Each is owned by ElectionsManager and only accepts calls from it (via `onlyOwner` modifier). They store feature-specific state that was extracted from ElectionsManager to keep it under the 24KB contract size limit.
+Auto-deployed by ElectionsManager's constructor. Each is owned by ElectionsManager and accepts calls only via the `onlyElectionsManager` modifier.
 
 ### 4a. MultiChoiceVoting.sol
 
-**State**:
 ```solidity
-mapping(uint => uint) public pollMaxChoices;                           // Max selections per poll
-mapping(uint => mapping(address => uint[])) public voterMultiChoices;  // Voter's multi-choice selections
+mapping(uint => uint) public pollMaxChoices;
+mapping(uint => mapping(address => uint[])) private voterMultiChoices;
 ```
 
-**Functions**:
-- `setMaxChoices(pollId, maxChoices)` — Configure max choices for a poll
-- `recordMultiChoice(pollId, voter, optionIds)` — Record voter's multi-choice selections
-- `getVoterMultiChoices(pollId, voter)` — View: get voter's selections
-
-**Events**: `MultiChoiceConfigured(uint indexed pollId, uint maxChoices)`
+| Function | Description |
+|----------|-------------|
+| `configureMultiChoice(pollId, maxChoices, optionsCount)` | Configure max selections (min 2). |
+| `recordMultiChoiceVote(pollId, voter, optionIds, optionsCount)` | Validate choices (no duplicates) and record. |
+| `getVoterMultiChoices(pollId, voter)` | Return voter's selections. |
 
 ### 4b. QuadraticVoting.sol
 
-**State**:
 ```solidity
-mapping(uint => bool) public quadraticVotingEnabled;                                     // Enabled flag per poll
-mapping(uint => mapping(address => mapping(uint => uint))) public quadraticVotes;         // voter → optionId → votes
+mapping(uint => bool) public quadraticVotingEnabled;
+mapping(uint => mapping(address => mapping(uint => uint))) public quadraticVoteAllocation;
+mapping(uint => mapping(address => uint)) public quadraticTokensSpent;
 ```
 
-**Functions**:
-- `enableQuadraticVoting(pollId)` — Enable quadratic voting for a poll
-- `recordQuadraticVotes(pollId, voter, optionIds, voteAmounts)` — Record quadratic allocations + emit event
-- `getQuadraticVotes(pollId, voter, optionId)` — View: get allocation
-
-**Events**:
-- `QuadraticVotingEnabled(uint indexed pollId)`
-- `VotedQuadratic(uint indexed pollId, address indexed voter, uint[] optionIds, uint[] voteAmounts, uint totalCost)`
+| Function | Description |
+|----------|-------------|
+| `setQuadraticVotingEnabled(pollId, enabled)` | Toggle quadratic voting. |
+| `recordQuadraticVotes(pollId, voter, optionIds, voteAmounts, optionsCount)` | Validate, compute cost (Σ v²), record. Returns `(totalCost, totalVotes)`. |
+| `getQuadraticVotes(pollId, voter, optionId)` | Return vote allocation. |
 
 ### 4c. DelegationVoting.sol
 
-**State**:
 ```solidity
-mapping(uint => mapping(address => address)) public voteDelegation;   // delegator → delegatee
-mapping(uint => mapping(address => uint)) public delegationCount;     // delegatee → count
+mapping(uint => mapping(address => address)) public voteDelegation;
+mapping(uint => mapping(address => uint)) public delegationCount;
+mapping(uint => mapping(address => bool)) public hasDelegated;
 ```
 
-**Functions**:
-- `delegateVote(pollId, delegator, delegatee)` — Record delegation
-- `removeDelegation(pollId, delegator)` — Remove active delegation
-- `recordDelegateVote(pollId, delegate, delegator, optionId)` — Record delegate's vote
-- `hasDelegated(pollId, voter)` — View: check if voter delegated
-- `getDelegationInfo(pollId, voter)` — View: get (delegatee, isDelegated, delegationsReceived)
-
-**Events**:
-- `VoteDelegated(uint indexed pollId, address indexed delegator, address indexed delegatee)`
-- `DelegationRemoved(uint indexed pollId, address indexed delegator, address indexed previousDelegatee)`
-- `VotedAsDelegate(uint indexed pollId, address indexed delegate, address indexed delegator, uint optionId)`
+| Function | Description |
+|----------|-------------|
+| `recordDelegation(pollId, delegator, delegatee)` | Record delegation. Prevents self-delegation and chain delegation. |
+| `removeDelegation(pollId, delegator)` | Remove active delegation. |
+| `recordDelegateVote(pollId, delegate, delegator, optionId)` | Validate delegation and emit event. |
+| `getDelegationInfo(pollId, voter)` | Return `(delegatee, isDelegated, delegationsReceived)`. |
 
 ### 4d. MetadataVoting.sol
 
-**State**:
 ```solidity
-mapping(uint => string) public pollMetadataURI;  // IPFS URI per poll
+mapping(uint => string) public pollMetadataURI;
 ```
 
-**Functions**:
-- `setPollMetadata(pollId, metadataURI)` — Set IPFS metadata URI
-- `getPollMetadata(pollId)` — View: get metadata URI
-
-**Events**: `PollMetadataSet(uint indexed pollId, string metadataURI)`
+| Function | Description |
+|----------|-------------|
+| `setPollMetadata(pollId, metadataURI)` | Store IPFS URI. Rejects empty strings. |
+| `getPollMetadata(pollId)` | Return URI. |
 
 ---
 
 ## 5. TokenIntegratedVoting.sol
 
-**Inherits**: TimeValidator → Ownable
+**Inherits:** TimeValidator
 
-Integration layer connecting the token system to the voting logic. Also implements the **infrastructure lock**.
+Integration layer that connects the token system and implements infrastructure locking and ownership.
 
-### Key State Variables
+### Key State
 
 ```solidity
 TokenManager public tokenManager;
 VotingPaymaster public votingPaymaster;
-bool public infrastructureLocked;        // Trust: permanent lock
+bool public infrastructureLocked;    // Permanent after first poll
 address public owner;
 address public pendingOwner;
 ```
 
-### Key Functions
+### Functions
 
-- **`setTokenManager(address)`** — Set token manager. Requires `!infrastructureLocked`.
-- **`setVotingPaymaster(address)`** — Set paymaster. Requires `!infrastructureLocked`.
-- **`allocateVotingTokens(pollId, voters[], amounts[])`** — Allocate voting tokens. Owner only. 3 modes: empty amounts=use config default, single element=uniform for all, full array=per-voter amounts.
-- **`lockInfrastructure()`** — External lock function. Also called internally by `_lockInfrastructure()`.
-- **`_lockInfrastructure()`** — Internal. Called by `createPoll()` in ElectionsManager. Sets `infrastructureLocked = true` permanently.
-- **`transferOwnership(newOwner)`** — Initiate two-step transfer.
-- **`acceptOwnership()`** — Accept pending ownership.
-
-### Events
-
-```solidity
-event TokenManagerSet(address indexed tokenManager);
-event PaymasterSet(address indexed paymaster);
-event InfrastructureLocked();
-event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
-```
+| Function | Access | Description |
+|----------|--------|-------------|
+| `setTokenManager(addr)` | Owner | Set TokenManager. Reverts if `infrastructureLocked`. |
+| `setVotingPaymaster(addr)` | Owner | Set Paymaster. Reverts if `infrastructureLocked`. |
+| `lockInfrastructure()` | Owner | Manual lock. Also called automatically by `createPoll()`. |
+| `configureTokenVoting(pollId, enabled, tokenRequired, tokensPerVoter, allowGaslessVoting)` | Owner | Configure token settings for a poll. |
+| `allocateVotingTokens(pollId, voters[], amounts[])` | Owner | Allocate tokens. 3 modes: empty=default, single=uniform, full=per-voter. |
+| `voteInPollWithToken(pollId, optionId, voter)` | Virtual | Base implementation. Overridden by ElectionsManager. |
+| `transferOwnership(newOwner)` | Owner | Step 1: set `pendingOwner`. |
+| `acceptOwnership()` | Pending Owner | Step 2: become owner. |
+| `cancelOwnershipTransfer()` | Owner | Cancel pending transfer. |
+| `renounceOwnership()` | Owner | Permanently remove owner. |
 
 ---
 
 ## 6. TokenManager.sol
 
-Manages per-poll ERC20 voting tokens. Called by ElectionsManager.
+Factory for per-poll ERC20 voting tokens. Called by ElectionsManager.
 
 ### Functions
 
-- **`createPollToken(pollId, name, symbol)`** — Deploy new VotingToken for a poll.
-- **`allocateTokens(pollId, voter, amount)`** — Mint tokens to voter.
-- **`batchAllocateTokens(pollId, voters[], amounts[])`** — Batch allocation.
-- **`burnTokensForVote(pollId, voter)`** — Burn 1 token (called during voting).
-- **`burnTokens(pollId, voter, amount)`** — Burn arbitrary amount (quadratic voting).
-- **`hasVoteTokens(pollId, voter)`** — Check if voter has >= 1 token.
-- **`getTokenBalance(pollId, voter)`** — Get token balance.
-- **`getPollToken(pollId)`** — Get token contract address.
-
-### Events
-
-```solidity
-event TokenCreated(uint256 indexed pollId, address indexed tokenAddress, string name, string symbol);
-```
+| Function | Access | Description |
+|----------|--------|-------------|
+| `createPollToken(pollId, name, symbol)` | Voting Contract | Deploy a new `VotingToken`. |
+| `allocateTokens(pollId, voter, amount)` | Voting Contract | Mint tokens to a voter. |
+| `batchAllocateTokens(pollId, voters[], amounts[])` | Voting Contract | Batch mint. |
+| `burnTokensForVote(pollId, voter)` | Voting Contract | Burn 1 token (standard vote). |
+| `burnTokens(pollId, voter, amount)` | Voting Contract | Burn N tokens (quadratic vote). |
+| `hasVoteTokens(pollId, voter)` | Public | Check ≥ 1 token. |
+| `getTokenBalance(pollId, voter)` | Public | Get token balance. |
+| `getPollToken(pollId)` | Public | Get token contract address. |
 
 ---
 
 ## 7. VotingPaymaster.sol
 
-Sponsors gas fees for voters via EIP-712 meta-transactions.
-
-### Functions
-
-- **`fund()`** — Fund paymaster with ETH (payable).
-- **`withdraw(amount)`** — Withdraw unused ETH.
-- **`executeVoteWithToken(pollId, optionId, voter, deadline, v, r, s)`** — Verify EIP-712 signature and execute gasless vote.
-- **`verifySignature(...)`** — Verify and recover signer from EIP-712 signature.
-- **`addRelayer(address)`** — Add trusted relayer.
-- **`removeRelayer(address)`** — Remove relayer.
-- **`nonces(address)`** — Get current nonce for voter (replay prevention).
+Gas sponsorship via EIP-712 meta-transactions.
 
 ### EIP-712 Domain
 
@@ -438,109 +423,99 @@ EIP712Domain {
 }
 ```
 
+### Functions
+
+| Function | Access | Description |
+|----------|--------|-------------|
+| `fund()` | Anyone (payable) | Deposit ETH for gas sponsorship. |
+| `withdraw(amount)` | Admin | Withdraw ETH. |
+| `executeVoteWithToken(pollId, optionId, voter, deadline, v, r, s)` | Relayer | Verify EIP-712 sig, increment nonce, forward vote. Gas limit: 200,000. |
+| `verifySignature(pollId, optionId, voter, deadline, v, r, s)` | Public | Verify and recover signer. Rejects malleable signatures. |
+| `addRelayer(addr)` / `removeRelayer(addr)` | Admin | Manage relayer whitelist. |
+| `setRelayerWhitelistEnabled(enabled)` | Admin | Toggle whitelist enforcement. |
+| `transferAdmin(newAdmin)` | Admin | Transfer admin rights. |
+
 ---
 
 ## 8. VotingToken.sol
 
-Per-poll non-transferable burnable ERC20 token.
+Per-poll soulbound ERC20 token.
 
-### Characteristics
-- **Soulbound**: `transfer()` always reverts
-- **Burnable**: Only via `transferFrom` to `address(0)` (used by TokenManager)
-- **Approvable**: Standard `approve()` / `allowance()` for paymaster integration
-- **Minting**: Only by TokenManager (the creator)
+| Property | Value |
+|----------|-------|
+| Decimals | 0 (whole units) |
+| Transferable | **No** — `transfer()` always reverts |
+| Burnable | Only via TokenManager (`burn()` restricted to `onlyTokenManager`) |
+| Creator | TokenManager (set as `tokenManager` in constructor) |
 
-### Functions
-Standard ERC20 view functions (`name`, `symbol`, `decimals`, `totalSupply`, `balanceOf`) plus:
-- **`approve(spender, amount)`** — Standard approve
-- **`transfer(to, amount)`** — Always reverts (non-transferable)
-- **`transferFrom(from, to, amount)`** — Only works when `to == address(0)` (burn)
-- **`mint(to, amount)`** — Only callable by TokenManager
+Standard ERC20 view functions (`name`, `symbol`, `decimals`, `totalSupply`, `balanceOf`) plus `approve()` and `allowance()` for paymaster integration.
 
 ---
 
-## 9. TimeValidator.sol
+## 9. VotingReader.sol
 
-Enforces time-based rules for poll creation.
+Read-only aggregator deployed alongside the voting system. Provides single-call access to data spread across ElectionsManager and its modules. Holds no state.
 
-### Constants
+### Functions
 
-| Name | Value | Purpose |
-|------|-------|---------|
+| Function | Returns |
+|----------|---------|
+| `isQuadraticVotingEnabled(pollId)` | `bool` |
+| `getPollMaxChoices(pollId)` | `uint` |
+| `isDelegationEnabled(pollId)` | `bool` |
+| `isDelegated(pollId, voter)` | `bool` |
+| `getDelegatee(pollId, voter)` | `address` |
+| `getPollFeatures(pollId)` | `(isQuadratic, maxChoices, isDelegation, isSecret, started, active, ended, revealed)` |
+| `getVoterStatus(pollId, voter)` | `(authorized, voted, delegated, delegatee, votedWithToken)` |
+
+---
+
+## 10. TimeValidator.sol
+
+Time validation rules inherited by all voting contracts.
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
 | `MIN_POLL_DURATION` | 300 seconds (5 min) | Minimum poll duration |
-| `MAX_FUTURE_START` | 30 days | Maximum future start time |
-| `TIME_BUFFER` | 30 seconds | Buffer for blockchain time variance |
+| `MAX_FUTURE_START` | 30 days (2,592,000 s) | Maximum future start time |
+| `TIME_BUFFER` | 30 seconds | Buffer for block timestamp variance |
 
-### Functions
+### Internal Functions
 
-- **`_validateTimeRange(startTime, durationSeconds)`** — Internal. Validates start time and duration constraints.
-
----
-
-## 10. Ownable.sol
-
-Two-step ownership management.
-
-### Functions
-- **`transferOwnership(newOwner)`** — Set `pendingOwner`.
-- **`acceptOwnership()`** — `pendingOwner` accepts and becomes `owner`.
+| Function | Description |
+|----------|-------------|
+| `_validateTimeRange(startTime, duration)` | Validate start not in past, not too far future, duration ≥ 5 min |
+| `_isWithinVotingPeriod(startTime, endTime)` | `block.timestamp ≥ startTime && block.timestamp + 30 ≤ endTime` |
+| `_hasStarted(startTime)` | `block.timestamp ≥ startTime` |
+| `_hasEnded(endTime)` | `block.timestamp ≥ endTime + 30` |
 
 ---
 
-## Modifiers
+## Modifiers Reference
 
-| Modifier | Contract | Purpose |
-|----------|----------|---------|
-| `onlyOwner` | TokenIntegratedVoting | Restrict to contract owner |
-| `onlyAdminOrOwner(pollId)` | ElectionsManager | Restrict to poll admin or owner |
-| `nonReentrant` | TokenIntegratedVoting | Prevent reentrancy attacks |
-
----
-
-## Error Messages (Key Trust-Related)
-
-| Error | Context |
-|-------|---------|
-| `"Infra locked"` | setTokenManager/setVotingPaymaster/setSecretBallotManager/setFranchiseManager after lock |
-| `"Secret ballot: use SBM"` | Direct vote on secret ballot poll |
-| `"Poll not revealed"` | View functions before reveal |
-| `"Poll not ended"` | revealResults before endTime + buffer |
-| `"Reveal window active"` | revealResults during reveal window |
-| `"Only SBM"` | recordSecretVote/burnTokenForCommit from non-SBM address |
-| `"Poll already started"` | setPollMetadata after startTime |
-| `"Secret ballot not enabled."` | commitVote on non-secret-ballot poll |
-| `"Not in reveal period."` | revealVote outside reveal window |
-| `"Invalid reveal: hash mismatch."` | Wrong optionId or salt during reveal |
-
-See [docs/ERROR_CODES.md](./docs/ERROR_CODES.md) for the complete list of 56+ error codes.
+| Modifier | Contract | Restricts To |
+|----------|----------|-------------|
+| `onlyOwner` | TokenIntegratedVoting | Contract owner |
+| `onlyAdminOrOwner(pollId)` | ElectionsManager | Poll admin or contract owner |
+| `nonReentrant` | TokenIntegratedVoting, FranchiseManager | Prevents reentrancy |
+| `onlyVotingContract` | TokenManager, VotingPaymaster | ElectionsManager only |
+| `onlyElectionsManager` | All 4 module contracts | ElectionsManager only |
+| `onlyAdmin` | VotingPaymaster | Paymaster admin |
+| `onlyOwnerOrElectionsManager` | SecretBallotManager | Owner or ElectionsManager |
 
 ---
 
 ## Gas Optimization Techniques
 
-- **`viaIR: true`** with optimizer runs=100 (keeps ElectionsManager under 24KB)
-- **Storage packing**: Bool fields in Poll struct packed into same slot
-- **`polls()` struct field indices**: [0]=title, [1]=admin, [2]=startTime, [3]=endTime, [4]=revealed, [5]=ended, [6]=totalVotes, [7]=optionsCount, [8]=exists, [9]=tokenVotingEnabled, [10]=tokenVotingRequired
-- **`calldata`** for external function parameters
-- **Batch operations**: `addVoters`, `addVotersWithTokens`, `batchAllocateTokens`
-- **Short-circuit evaluation**: `require(A || B)` stops at first true
-- **Private mappings**: `options`, `voterChoice` use `private` visibility
+| Technique | Where Applied |
+|-----------|---------------|
+| `viaIR: true` with 100 runs | Hardhat config — minimises bytecode size |
+| `calldata` parameters | All external functions |
+| Batch operations | `addVoters`, `addVotersWithTokens`, `batchAllocateTokens` |
+| Private mappings | `options`, `voterChoice` — reduces ABI surface |
+| Short-circuit `require` | `require(A \|\| B)` evaluations |
+| Struct packing | Bool fields in `Poll` share storage slots |
 
 ---
 
-## Security Considerations
-
-- **Reentrancy**: `nonReentrant` modifier on all state-changing voting functions + CEI pattern
-- **Access Control**: Owner, Admin, Voter roles with strict permission checks
-- **Infrastructure Lock**: Prevents swapping critical contracts after first poll
-- **Commit-Reveal**: Prevents vote front-running and premature disclosure
-- **Time Validation**: Minimum duration, maximum future start, buffer periods
-- **DoS Prevention**: Limits on options (100) and batch sizes (50)
-- **Two-Step Ownership**: Prevents accidental ownership transfer
-- **No Admin Bypass**: View functions require `revealed == true` for everyone
-
----
-
-**Version**: 4.1.0
-**Solidity**: ^0.8.20 (compiled with 0.8.28)
-**Optimizer**: 100 runs, viaIR enabled
+**Version:** 4.1.0 | **Solidity:** ^0.8.20 (compiled with 0.8.28) | **License:** LicenseRef-ANKIT-SORAL

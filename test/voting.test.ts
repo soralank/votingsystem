@@ -79,7 +79,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     expect(bnToNumber(opt2[2])).to.equal(0);
 
     // one person can only vote on a poll once -> double vote should revert
-    await expect(voting.connect(alice).voteInPoll(pollId, 1)).to.be.revertedWith("Already voted");
+    await expect(voting.connect(alice).voteInPoll(pollId, 1)).to.be.revertedWithCustomError(voting, "AlreadyVoted");
   });
 
   it("admin-only actions and permission checks for a poll", async function () {
@@ -88,27 +88,19 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     const pollId = bnToNumber(await voting.pollsCount());
 
     // non-admin cannot add options to the poll
-    await expect(voting.connect(attacker).addOptionToPoll(pollId, "X")).to.be.revertedWith(
-      "Admin only"
-    );
+    await expect(voting.connect(attacker).addOptionToPoll(pollId, "X")).to.be.revertedWithCustomError(voting, "Unauthorized");
 
     // admin can add option
     await (await voting.connect(admin).addOptionToPoll(pollId, "Opt")).wait();
 
     // non-admin/non-owner cannot add voters
-    await expect(voting.connect(attacker).addVoter(pollId, alice.address)).to.be.revertedWith(
-      "Admin only"
-    );
+    await expect(voting.connect(attacker).addVoter(pollId, alice.address)).to.be.revertedWithCustomError(voting, "Unauthorized");
 
     // unauthorized voter cannot vote
-    await expect(voting.connect(attacker).voteInPoll(pollId, 1)).to.be.revertedWith(
-      "Not voter"
-    );
+    await expect(voting.connect(attacker).voteInPoll(pollId, 1)).to.be.revertedWithCustomError(voting, "NotVoter");
 
     // cannot reveal before poll end (democratic reveal — anyone can trigger after time expires)
-    await expect(voting.connect(attacker).revealResults(pollId)).to.be.revertedWith(
-      "Poll not ended"
-    );
+    await expect(voting.connect(attacker).revealResults(pollId)).to.be.revertedWithCustomError(voting, "PollNotEnded");
   });
 
   it("time limits, reveal and end behavior, and getVoterChoice access control for a poll", async function () {
@@ -133,12 +125,8 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     await (await voting.connect(alice).voteInPoll(pollId, 1)).wait();
 
     // No one can read voter choice before reveal (no admin bypass)
-    await expect(voting.connect(admin).getVoterChoice(pollId, alice.address)).to.be.revertedWith(
-      "Not revealed"
-    );
-    await expect(voting.connect(attacker).getVoterChoice(pollId, alice.address)).to.be.revertedWith(
-      "Not revealed"
-    );
+    await expect(voting.connect(admin).getVoterChoice(pollId, alice.address)).to.be.revertedWithCustomError(voting, "PollNotRevealed");
+    await expect(voting.connect(attacker).getVoterChoice(pollId, alice.address)).to.be.revertedWithCustomError(voting, "PollNotRevealed");
 
     // advance time beyond endTime + TIME_BUFFER (use contract-provided endTime to avoid flakiness)
     const endTime = bnToNumber(await voting.getPollEndTime(pollId));
@@ -146,7 +134,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     await ethers.provider.send("evm_mine", []);
 
     // attempting to vote after time should revert (already past endTime + buffer)
-    await expect(voting.connect(bob).voteInPoll(pollId, 2)).to.be.revertedWith("Not active");
+    await expect(voting.connect(bob).voteInPoll(pollId, 2)).to.be.revertedWithCustomError(voting, "PollNotActive");
 
     // reveal now allowed (time has passed + TIME_BUFFER)
     await (await voting.connect(admin).revealResults(pollId)).wait();
@@ -156,9 +144,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     expect(choiceAfterReveal).to.equal(1);
 
     // after time passes, adding option should revert (time-based end)
-    await expect(voting.connect(admin).addOptionToPoll(pollId, "LateOpt")).to.be.revertedWith(
-      "Poll ended"
-    );
+    await expect(voting.connect(admin).addOptionToPoll(pollId, "LateOpt")).to.be.revertedWithCustomError(voting, "PollEnded");
   });
 
   it("reveal before endTime reverts appropriately for a poll", async function () {
@@ -168,7 +154,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     const pollId = bnToNumber(await voting.pollsCount());
 
     // Cannot reveal before endTime + TIME_BUFFER
-    await expect(voting.connect(admin).revealResults(pollId)).to.be.revertedWith("Poll not ended");
+    await expect(voting.connect(admin).revealResults(pollId)).to.be.revertedWithCustomError(voting, "PollNotEnded");
   });
 
   it("ownership transfer: new owner can create polls; old owner can't (2-step process)", async function () {
@@ -186,9 +172,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     now = await getCurrentTimestamp();
 
     // Now old owner cannot create
-    await expect(voting.connect(owner).createPoll("ShouldFail",  admin.address,  now + 2,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).to.be.revertedWith(
-      "Not authorized"
-    );
+    await expect(voting.connect(owner).createPoll("ShouldFail",  admin.address,  now + 2,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).to.be.revertedWithCustomError(voting, "Unauthorized");
 
     // Refresh timestamp again for final poll
     now = await getCurrentTimestamp();
@@ -210,7 +194,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     // no votes yet
     expect(bnToNumber(await voting.getTotalVotes(pollId))).to.equal(0);
     // voter choice hidden until reveal (no admin bypass)
-    await expect(voting.getVoterChoice(pollId, alice.address)).to.be.revertedWith("Not revealed");
+    await expect(voting.getVoterChoice(pollId, alice.address)).to.be.revertedWithCustomError(voting, "PollNotRevealed");
   });
 
   it("creating multiple polls increments pollsCount", async function () {
@@ -239,9 +223,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
     // alice is not authorized yet
     expect(await voting.isVoterAuthorized(pollId, alice.address)).to.be.false;
-    await expect(voting.connect(alice).voteInPoll(pollId, 1)).to.be.revertedWith(
-      "Not voter"
-    );
+    await expect(voting.connect(alice).voteInPoll(pollId, 1)).to.be.revertedWithCustomError(voting, "NotVoter");
 
     // admin authorizes alice
     await (await voting.connect(admin).addVoter(pollId, alice.address)).wait();
@@ -300,9 +282,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     expect(await voting.isVoterAuthorized(pollId, alice.address)).to.be.false;
 
     // alice cannot vote
-    await expect(voting.connect(alice).voteInPoll(pollId, 1)).to.be.revertedWith(
-      "Not voter"
-    );
+    await expect(voting.connect(alice).voteInPoll(pollId, 1)).to.be.revertedWithCustomError(voting, "NotVoter");
   });
 
   it("voter authorization: cannot remove voter after poll starts", async function () {
@@ -319,9 +299,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     await ethers.provider.send("evm_mine", []);
     
     // cannot remove alice after poll started (even before she votes)
-    await expect(voting.connect(admin).removeVoter(pollId, alice.address)).to.be.revertedWith(
-      "Poll started"
-    );
+    await expect(voting.connect(admin).removeVoter(pollId, alice.address)).to.be.revertedWithCustomError(voting, "PollStarted");
   });
 
   it("helper functions: isPollActive returns correct status", async function () {
@@ -369,8 +347,8 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     await (await voting.connect(attacker).voteInPoll(pollId, 1)).wait(); // votes for Alice
 
     // No one can see winner before reveal (no admin bypass)
-    await expect(voting.connect(admin).getWinner(pollId)).to.be.revertedWith("Not revealed");
-    await expect(voting.connect(attacker).getWinner(pollId)).to.be.revertedWith("Not revealed");
+    await expect(voting.connect(admin).getWinner(pollId)).to.be.revertedWithCustomError(voting, "PollNotRevealed");
+    await expect(voting.connect(attacker).getWinner(pollId)).to.be.revertedWithCustomError(voting, "PollNotRevealed");
 
     // advance time and reveal (need TIME_BUFFER after endTime)
     const endTime = bnToNumber(await voting.getPollEndTime(pollId));
@@ -397,9 +375,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     await ethers.provider.send("evm_mine", []);
 
     // cannot add voters after poll ended (time-based)
-    await expect(voting.connect(admin).addVoter(pollId, alice.address)).to.be.revertedWith(
-      "Poll ended"
-    );
+    await expect(voting.connect(admin).addVoter(pollId, alice.address)).to.be.revertedWithCustomError(voting, "PollEnded");
   });
 
   it("cannot add duplicate voter", async function () {
@@ -410,9 +386,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     await (await voting.connect(admin).addVoter(pollId, alice.address)).wait();
 
     // adding alice again should revert
-    await expect(voting.connect(admin).addVoter(pollId, alice.address)).to.be.revertedWith(
-      "Dup voter"
-    );
+    await expect(voting.connect(admin).addVoter(pollId, alice.address)).to.be.revertedWithCustomError(voting, "DuplicateVoter");
   });
 
   it("getPollsCount() returns correct count as polls are created", async function () {
@@ -452,11 +426,11 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     const now = await getCurrentTimestamp();
     await expect(
       voting.connect(owner).createPoll("TooShort",  admin.address,  now + 2,  299, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
-    ).to.be.revertedWith("Poll duration too short.");
+    ).to.be.revertedWithCustomError(voting, "DurationTooShort");
 
     await expect(
       voting.connect(owner).createPoll("TooShort2",  admin.address,  now + 2,  100, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
-    ).to.be.revertedWith("Poll duration too short.");
+    ).to.be.revertedWithCustomError(voting, "DurationTooShort");
 
     // 300 seconds should work
     await (await voting.connect(owner).createPoll("JustRight",  admin.address,  now + 2,  300, false, false, ethers.ZeroAddress, ethers.ZeroAddress)).wait();
@@ -478,7 +452,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     // 101st option should fail
     await expect(
       voting.connect(admin).addOptionToPoll(pollId, "Option101")
-    ).to.be.revertedWith("Max options");
+    ).to.be.revertedWithCustomError(voting, "MaxOptionsReached");
   });
 
   it("security: MAX_VOTERS_BATCH - cannot add more than 50 voters in one batch", async function () {
@@ -495,7 +469,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     
     await expect(
       voting.connect(admin).addVoters(pollId, voters51)
-    ).to.be.revertedWith("Batch limit");
+    ).to.be.revertedWithCustomError(voting, "BatchLimitExceeded");
 
     // 50 voters should work
     const voters50 = voters51.slice(0, 50);
@@ -553,7 +527,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
 
     await expect(
       voting.connect(alice).voteInPoll(pollId, 1)
-    ).to.be.revertedWith("Not active");
+    ).to.be.revertedWithCustomError(voting, "PollNotActive");
   });
 
   it("ownership: 2-step transfer - cancelOwnershipTransfer", async function () {
@@ -567,7 +541,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     // Attacker cannot accept (no pending transfer)
     await expect(
       voting.connect(attacker).acceptOwnership()
-    ).to.be.revertedWith("Only pending owner can accept");
+    ).to.be.revertedWithCustomError(voting, "OnlyPendingOwner");
 
     // Refresh timestamp
     now = await getCurrentTimestamp();
@@ -584,7 +558,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     // Attacker tries to accept (should fail)
     await expect(
       voting.connect(attacker).acceptOwnership()
-    ).to.be.revertedWith("Only pending owner can accept");
+    ).to.be.revertedWithCustomError(voting, "OnlyPendingOwner");
 
     // Correct pending owner accepts
     await (await voting.connect(newOwner).acceptOwnership()).wait();
@@ -603,11 +577,11 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     // No one can create polls now
     await expect(
       voting.connect(owner).createPoll("Fail",  admin.address,  now + 2,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
-    ).to.be.revertedWith("Not authorized");
+    ).to.be.revertedWithCustomError(voting, "Unauthorized");
 
     await expect(
       voting.connect(newOwner).createPoll("Fail2",  admin.address,  now + 2,  1000, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
-    ).to.be.revertedWith("Not authorized");
+    ).to.be.revertedWithCustomError(voting, "Unauthorized");
   });
 
   // Scheduled Voting Tests
@@ -622,7 +596,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     await (await voting.connect(admin).addVoter(pollId, alice.address)).wait();
 
     // Try to vote before start time (should fail)
-    await expect(voting.connect(alice).voteInPoll(pollId, 1)).to.be.revertedWith("Not active");
+    await expect(voting.connect(alice).voteInPoll(pollId, 1)).to.be.revertedWithCustomError(voting, "PollNotActive");
   });
 
   it("scheduled poll: can add options and voters before start time", async function () {
@@ -657,9 +631,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     await ethers.provider.send("evm_mine", []);
 
     // Cannot add option after start
-    await expect(voting.connect(admin).addOptionToPoll(pollId, "LateOption")).to.be.revertedWith(
-      "Poll started"
-    );
+    await expect(voting.connect(admin).addOptionToPoll(pollId, "LateOption")).to.be.revertedWithCustomError(voting, "PollStarted");
   });
 
   it("scheduled poll: cannot add voters after poll starts", async function () {
@@ -676,9 +648,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     await ethers.provider.send("evm_mine", []);
 
     // Cannot add voter after start
-    await expect(voting.connect(admin).addVoter(pollId, alice.address)).to.be.revertedWith(
-      "Poll started"
-    );
+    await expect(voting.connect(admin).addVoter(pollId, alice.address)).to.be.revertedWithCustomError(voting, "PollStarted");
   });
 
   it("scheduled poll: cannot remove voters after poll starts", async function () {
@@ -696,9 +666,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     await ethers.provider.send("evm_mine", []);
 
     // Cannot remove voter after start
-    await expect(voting.connect(admin).removeVoter(pollId, alice.address)).to.be.revertedWith(
-      "Poll started"
-    );
+    await expect(voting.connect(admin).removeVoter(pollId, alice.address)).to.be.revertedWithCustomError(voting, "PollStarted");
   });
 
   it("scheduled poll: voting works during active period", async function () {
@@ -725,7 +693,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     const pastTime = now - 100;
     await expect(
       voting.connect(owner).createPoll("PastPoll",  admin.address,  pastTime,  600, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
-    ).to.be.revertedWith("Start time cannot be in the past.");
+    ).to.be.revertedWithCustomError(voting, "StartTimeInPast");
   });
 
   it("time validation: cannot create poll with start time too far in future", async function () {
@@ -733,7 +701,7 @@ describe("Voting (TS tests) - Voting title (poll) mode", function () {
     const farFuture = now + (31 * 24 * 60 * 60); // 31 days
     await expect(
       voting.connect(owner).createPoll("TooFar",  admin.address,  farFuture,  600, false, false, ethers.ZeroAddress, ethers.ZeroAddress)
-    ).to.be.revertedWith("Start time too far in future.");
+    ).to.be.revertedWithCustomError(voting, "StartTimeTooFarInFuture");
   });
 
   it("time validation: can create poll exactly at MAX_FUTURE_START boundary", async function () {

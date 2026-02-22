@@ -55,15 +55,15 @@ describe("VotingPaymaster - Gasless Voting with EIP-712", function () {
 
       await expect(
         VotingPaymaster.deploy(ethers.ZeroAddress, tokenManager.target, admin.address)
-      ).to.be.revertedWith("Invalid voting contract");
+      ).to.be.revertedWithCustomError(VotingPaymaster, "ZeroAddress");
 
       await expect(
         VotingPaymaster.deploy(votingContract.address, ethers.ZeroAddress, admin.address)
-      ).to.be.revertedWith("Invalid token manager");
+      ).to.be.revertedWithCustomError(VotingPaymaster, "ZeroAddress");
 
       await expect(
         VotingPaymaster.deploy(votingContract.address, tokenManager.target, ethers.ZeroAddress)
-      ).to.be.revertedWith("Invalid admin");
+      ).to.be.revertedWithCustomError(VotingPaymaster, "ZeroAddress");
     });
   });
 
@@ -108,7 +108,7 @@ describe("VotingPaymaster - Gasless Voting with EIP-712", function () {
     it("should revert fund() with zero ETH", async function () {
       await expect(
         votingPaymaster.connect(admin).fund({ value: 0 })
-      ).to.be.revertedWith("Must send ETH");
+      ).to.be.revertedWithCustomError(votingPaymaster, "MustSendETH");
     });
 
     it("should allow anyone to fund", async function () {
@@ -148,13 +148,13 @@ describe("VotingPaymaster - Gasless Voting with EIP-712", function () {
     it("should revert if non-admin tries to withdraw", async function () {
       await expect(
         votingPaymaster.connect(attacker).withdraw(ethers.parseEther("1"))
-      ).to.be.revertedWith("Only admin");
+      ).to.be.revertedWithCustomError(votingPaymaster, "Unauthorized");
     });
 
     it("should revert if insufficient balance", async function () {
       await expect(
         votingPaymaster.connect(admin).withdraw(ethers.parseEther("10"))
-      ).to.be.revertedWith("Insufficient balance");
+      ).to.be.revertedWithCustomError(votingPaymaster, "InsufficientBalance");
     });
   });
 
@@ -193,13 +193,13 @@ describe("VotingPaymaster - Gasless Voting with EIP-712", function () {
     it("should revert if non-admin tries to add relayer", async function () {
       await expect(
         votingPaymaster.connect(attacker).addRelayer(relayer.address)
-      ).to.be.revertedWith("Only admin");
+      ).to.be.revertedWithCustomError(votingPaymaster, "Unauthorized");
     });
 
     it("should revert adding zero address as relayer", async function () {
       await expect(
         votingPaymaster.connect(admin).addRelayer(ethers.ZeroAddress)
-      ).to.be.revertedWith("Invalid relayer");
+      ).to.be.revertedWithCustomError(votingPaymaster, "ZeroAddress");
     });
   });
 
@@ -311,7 +311,7 @@ describe("VotingPaymaster - Gasless Voting with EIP-712", function () {
           sig.r,
           sig.s
         )
-      ).to.be.revertedWith("Signature expired");
+      ).to.be.revertedWithCustomError(votingPaymaster, "SignatureExpired");
     });
 
     it("should reject signature with wrong nonce", async function () {
@@ -388,19 +388,19 @@ describe("VotingPaymaster - Gasless Voting with EIP-712", function () {
 
       await expect(
         votingPaymaster.connect(admin).addRelayer(voter.address)
-      ).to.be.revertedWith("Only admin");
+      ).to.be.revertedWithCustomError(votingPaymaster, "Unauthorized");
     });
 
     it("should revert if non-admin tries to transfer", async function () {
       await expect(
         votingPaymaster.connect(attacker).transferAdmin(attacker.address)
-      ).to.be.revertedWith("Only admin");
+      ).to.be.revertedWithCustomError(votingPaymaster, "Unauthorized");
     });
 
     it("should revert transfer to zero address", async function () {
       await expect(
         votingPaymaster.connect(admin).transferAdmin(ethers.ZeroAddress)
-      ).to.be.revertedWith("Invalid admin");
+      ).to.be.revertedWithCustomError(votingPaymaster, "ZeroAddress");
     });
   });
 

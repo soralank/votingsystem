@@ -347,7 +347,7 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
       // Try to vote while paused (should fail)
       await expect(
         electionsManagerV2.connect(bob).voteInPoll(pollIdV2, 2)
-      ).to.be.revertedWith("Poll is paused");
+      ).to.be.revertedWithCustomError(electionsManagerV2, "PollIsPaused");
 
       // Unpause
       await electionsManagerV2.connect(admin).unpausePoll(pollIdV2);
@@ -495,7 +495,7 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
       // Infrastructure is locked because polls were already created
       await expect(
         electionsManagerV2.setFranchiseManager(franchiseManager.target)
-      ).to.be.revertedWith("Infra locked");
+      ).to.be.revertedWithCustomError(electionsManagerV2, "InfraLocked");
 
       console.log("✓ setFranchiseManager blocked after infra lock");
     });
@@ -561,7 +561,7 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
           ethers.ZeroAddress,
           ethers.ZeroAddress
         )
-      ).to.be.revertedWith("Not authorized");
+      ).to.be.revertedWithCustomError(electionsManagerV2, "Unauthorized");
 
       console.log("✓ Non-owner/non-franchise createPoll correctly rejected");
     });

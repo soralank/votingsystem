@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: LicenseRef-ANKIT-SORAL
 pragma solidity ^0.8.20;
 
+import "./VotingErrors.sol";
+
 /**
  * @title IElectionsManager
  * @notice Minimal interface for creating polls on ElectionsManager
@@ -126,7 +128,7 @@ contract FranchiseManager {
     uint256 private constant _ENTERED = 2;
 
     modifier nonReentrant() {
-        require(_reentrancyStatus != _ENTERED, "Reentrant call");
+        if (!(_reentrancyStatus != _ENTERED)) revert ReentrantCall();
         _reentrancyStatus = _ENTERED;
         _;
         _reentrancyStatus = _NOT_ENTERED;
@@ -134,13 +136,13 @@ contract FranchiseManager {
 
     // ── Modifiers ────────────────────────────────────────────────
     modifier onlyOwner() {
-        require(msg.sender == owner, "Only owner");
+        if (!(msg.sender == owner)) revert Unauthorized();
         _;
     }
 
     // ── Constructor ──────────────────────────────────────────────
     constructor(address _electionsManager) {
-        require(_electionsManager != address(0), "Invalid address");
+        if (!(_electionsManager != address(0))) revert ZeroAddress();
         electionsManager = IElectionsManager(_electionsManager);
         owner = msg.sender;
         _reentrancyStatus = _NOT_ENTERED;
@@ -160,8 +162,8 @@ contract FranchiseManager {
      * @param newOwner Address of the new owner
      */
     function transferOwnership(address newOwner) external onlyOwner {
-        require(newOwner != address(0), "Invalid address");
-        require(newOwner != owner, "Already owner");
+        if (!(newOwner != address(0))) revert ZeroAddress();
+        if (!(newOwner != owner)) revert SameAddress();
         pendingOwner = newOwner;
         emit OwnershipTransferStarted(owner, newOwner);
     }
@@ -170,7 +172,7 @@ contract FranchiseManager {
      * @notice Accept pending ownership transfer
      */
     function acceptOwnership() external {
-        require(msg.sender == pendingOwner, "Only pending owner");
+        if (!(msg.sender == pendingOwner)) revert OnlyPendingOwner();
         address prev = owner;
         owner = pendingOwner;
         pendingOwner = address(0);
@@ -197,18 +199,15 @@ contract FranchiseManager {
         address tokenManager,
         address votingPaymaster
     ) external onlyOwner returns (uint256) {
-        require(franchisee != address(0), "Invalid address");
-        require(franchisee != owner, "Owner cannot be franchisee");
-        require(durationSeconds > 0, "Duration must be > 0");
-        require(maxPolls > 0 && maxPolls <= 100, "Polls: 1-100");
+        if (!(franchisee != address(0))) revert ZeroAddress();
+        if (!(franchisee != owner)) revert OwnerCannotBeFranchisee();
+        if (!(durationSeconds > 0)) revert ZeroAmount();
+        if (!(maxPolls > 0 && maxPolls <= 100)) revert InvalidPollCount();
 
         // Security: Verify paymaster admin consents — must be system owner or franchisee
         if (votingPaymaster != address(0)) {
             address paymasterAdmin = IVotingPaymasterAdmin(votingPaymaster).admin();
-            require(
-                paymasterAdmin == owner || paymasterAdmin == franchisee,
-                "Paymaster admin must be owner or franchisee"
-            );
+            if (!(paymasterAdmin == owner || paymasterAdmin == franchisee)) revert BadPaymaster();
         }
 
         // Allow re-granting: supersedes any existing franchise.
@@ -258,10 +257,10 @@ contract FranchiseManager {
         uint256 additionalPolls
     ) external onlyOwner {
         Franchise storage f = franchises[franchiseId];
-        require(f.franchisee != address(0), "Franchise does not exist");
-        require(block.timestamp < f.expiresAt, "Franchise expired");
-        require(additionalPolls > 0, "Must add > 0");
-        require(f.maxPolls + additionalPolls <= 100, "Exceeds 100 poll cap");
+        if (!(f.franchisee != address(0))) revert FranchiseNotFound();
+        if (!(block.timestamp < f.expiresAt)) revert FranchiseExpired();
+        if (!(additionalPolls > 0)) revert ZeroAmount();
+        if (!(f.maxPolls + additionalPolls <= 100)) revert ExceedsPollCap();
 
         f.maxPolls += additionalPolls;
         emit PollsAdded(franchiseId, additionalPolls, f.maxPolls);
@@ -290,15 +289,15 @@ contract FranchiseManager {
         bool requireTokenVoting
     ) external payable nonReentrant returns (uint256) {
         uint256 fid = franchiseeToId[msg.sender];
-        require(fid != 0, "No franchise");
+        if (!(fid != 0)) revert NoFranchise();
 
         Franchise storage f = franchises[fid];
-        require(block.timestamp < f.expiresAt, "Franchise expired");
-        require(f.pollsUsed < f.maxPolls, "Max polls reached");
+        if (!(block.timestamp < f.expiresAt)) revert FranchiseExpired();
+        if (!(f.pollsUsed < f.maxPolls)) revert FranchiseExhausted();
 
         // First poll free, subsequent ones cost feePerPoll
         uint256 fee = f.pollsUsed == 0 ? 0 : f.feePerPoll;
-        require(msg.value >= fee, "Insufficient fee");
+        if (!(msg.value >= fee)) revert InsufficientFee();
 
         f.pollsUsed++;
 
@@ -323,7 +322,7 @@ contract FranchiseManager {
         if (msg.value > fee) {
             uint256 excess = msg.value - fee;
             (bool sent, ) = msg.sender.call{value: excess}("");
-            require(sent, "Refund failed");
+            if (!(sent)) revert TransferFailed();
         }
 
         return pollId;
@@ -344,19 +343,16 @@ contract FranchiseManager {
         address newFranchisee
     ) external payable nonReentrant {
         Franchise storage f = franchises[franchiseId];
-        require(msg.sender == f.franchisee, "Not franchisee");
-        require(block.timestamp < f.expiresAt, "Franchise expired");
-        require(f.pollsUsed < f.maxPolls, "Franchise exhausted");
-        require(newFranchisee != address(0), "Invalid address");
-        require(newFranchisee != msg.sender, "Cannot self-transfer");
-        require(newFranchisee != owner, "Owner cannot be franchisee");
-        require(
-            franchiseeToId[newFranchisee] == 0 ||
-                _isFranchiseInactive(franchiseeToId[newFranchisee]),
-            "Target has active franchise"
-        );
-        require(!transferRequests[franchiseId].pending, "Transfer pending");
-        require(msg.value >= transferFee, "Insufficient transfer fee");
+        if (!(msg.sender == f.franchisee)) revert Unauthorized();
+        if (!(block.timestamp < f.expiresAt)) revert FranchiseExpired();
+        if (!(f.pollsUsed < f.maxPolls)) revert FranchiseExhausted();
+        if (!(newFranchisee != address(0))) revert ZeroAddress();
+        if (!(newFranchisee != msg.sender)) revert CannotSelfTransfer();
+        if (!(newFranchisee != owner)) revert OwnerCannotBeFranchisee();
+        if (!(franchiseeToId[newFranchisee] == 0 ||
+                _isFranchiseInactive(franchiseeToId[newFranchisee]))) revert TargetHasActiveFranchise();
+        if (transferRequests[franchiseId].pending) revert TransferPending();
+        if (!(msg.value >= transferFee)) revert InsufficientFee();
 
         transferRequests[franchiseId] = TransferRequest({
             newFranchisee: newFranchisee,
@@ -381,7 +377,7 @@ contract FranchiseManager {
      */
     function approveTransfer(uint256 franchiseId) external onlyOwner {
         TransferRequest storage req = transferRequests[franchiseId];
-        require(req.pending, "No pending transfer");
+        if (!(req.pending)) revert NoTransferPending();
 
         Franchise storage f = franchises[franchiseId];
         address oldFranchisee = f.franchisee;
@@ -423,7 +419,7 @@ contract FranchiseManager {
      */
     function rejectTransfer(uint256 franchiseId) external onlyOwner nonReentrant {
         TransferRequest storage req = transferRequests[franchiseId];
-        require(req.pending, "No pending transfer");
+        if (!(req.pending)) revert NoTransferPending();
 
         uint256 refund = req.feePaid;
         address franchisee = franchises[franchiseId].franchisee;
@@ -438,7 +434,7 @@ contract FranchiseManager {
         // Refund transfer fee to franchisee
         if (refund > 0) {
             (bool sent, ) = franchisee.call{value: refund}("");
-            require(sent, "Refund failed");
+            if (!(sent)) revert TransferFailed();
         }
     }
 
@@ -462,9 +458,9 @@ contract FranchiseManager {
     function withdrawFees() external onlyOwner nonReentrant {
         uint256 balance = address(this).balance;
         uint256 withdrawable = balance - pendingRefunds;
-        require(withdrawable > 0, "No fees");
+        if (!(withdrawable > 0)) revert NoFeesToWithdraw();
         (bool sent, ) = owner.call{value: withdrawable}("");
-        require(sent, "Withdraw failed");
+        if (!(sent)) revert TransferFailed();
         emit FeesWithdrawn(owner, withdrawable);
     }
 
@@ -562,10 +558,10 @@ contract FranchiseManager {
     // ── Prevent accidental ETH sends ─────────────────────────────
 
     receive() external payable {
-        revert("Use createFranchisePoll or requestTransfer");
+        revert NoPlainEther();
     }
 
     fallback() external payable {
-        revert("Unknown function");
+        revert UnknownFunction();
     }
 }

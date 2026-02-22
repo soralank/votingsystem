@@ -65,19 +65,19 @@ describe("VotingToken - Per-Poll ERC20-Compatible Token", function () {
     it("should revert if non-TokenManager tries to mint", async function () {
       await expect(
         votingToken.connect(alice).mint(bob.address, 5)
-      ).to.be.revertedWith("Only TokenManager can call");
+      ).to.be.revertedWithCustomError(votingToken, "Unauthorized");
     });
 
     it("should revert minting to zero address", async function () {
       await expect(
         votingToken.connect(tokenManager).mint(ethers.ZeroAddress, 5)
-      ).to.be.revertedWith("Invalid address");
+      ).to.be.revertedWithCustomError(votingToken, "ZeroAddress");
     });
 
     it("should revert minting zero amount", async function () {
       await expect(
         votingToken.connect(tokenManager).mint(alice.address, 0)
-      ).to.be.revertedWith("Amount must be positive");
+      ).to.be.revertedWithCustomError(votingToken, "ZeroAmount");
     });
   });
 
@@ -110,13 +110,13 @@ describe("VotingToken - Per-Poll ERC20-Compatible Token", function () {
     it("should revert if non-TokenManager tries to burn", async function () {
       await expect(
         votingToken.connect(alice).burn(bob.address, 2)
-      ).to.be.revertedWith("Only TokenManager can call");
+      ).to.be.revertedWithCustomError(votingToken, "Unauthorized");
     });
 
     it("should revert burning more than balance", async function () {
       await expect(
         votingToken.connect(tokenManager).burn(alice.address, 11)
-      ).to.be.revertedWith("Insufficient balance");
+      ).to.be.revertedWithCustomError(votingToken, "InsufficientBalance");
     });
   });
 
@@ -153,13 +153,13 @@ describe("VotingToken - Per-Poll ERC20-Compatible Token", function () {
     it("should revert any direct transfer", async function () {
       await expect(
         votingToken.connect(alice).transfer(bob.address, 5)
-      ).to.be.revertedWith("Voting tokens are non-transferable");
+      ).to.be.revertedWithCustomError(votingToken, "NonTransferable");
     });
 
     it("should prevent token trading", async function () {
       await expect(
         votingToken.connect(alice).transfer(charlie.address, 1)
-      ).to.be.revertedWith("Voting tokens are non-transferable");
+      ).to.be.revertedWithCustomError(votingToken, "NonTransferable");
     });
   });
 
@@ -192,13 +192,13 @@ describe("VotingToken - Per-Poll ERC20-Compatible Token", function () {
     it("should revert transferFrom to non-zero address", async function () {
       await expect(
         votingToken.connect(bob).transferFrom(alice.address, charlie.address, 2)
-      ).to.be.revertedWith("Only burning allowed");
+      ).to.be.revertedWithCustomError(votingToken, "OnlyBurningAllowed");
     });
 
     it("should revert if allowance insufficient", async function () {
       await expect(
         votingToken.connect(bob).transferFrom(alice.address, ethers.ZeroAddress, 6)
-      ).to.be.revertedWith("Insufficient allowance");
+      ).to.be.revertedWithCustomError(votingToken, "InsufficientAllowance");
     });
 
     it("should revert if balance insufficient", async function () {
@@ -206,7 +206,7 @@ describe("VotingToken - Per-Poll ERC20-Compatible Token", function () {
 
       await expect(
         votingToken.connect(bob).transferFrom(alice.address, ethers.ZeroAddress, 11)
-      ).to.be.revertedWith("Insufficient balance");
+      ).to.be.revertedWithCustomError(votingToken, "InsufficientBalance");
     });
   });
 

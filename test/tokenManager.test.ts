@@ -32,7 +32,7 @@ describe("TokenManager - Token Factory & Allocator", function () {
       const TokenManager = await ethers.getContractFactory("TokenManager");
       await expect(
         TokenManager.deploy(ethers.ZeroAddress)
-      ).to.be.revertedWith("Invalid voting contract");
+      ).to.be.revertedWithCustomError(TokenManager, "ZeroAddress");
     });
   });
 
@@ -70,7 +70,7 @@ describe("TokenManager - Token Factory & Allocator", function () {
 
       await expect(
         tokenManager.connect(votingContract).createPollToken(1, "Vote-Poll1-Duplicate", "VOTE1DUP")
-      ).to.be.revertedWith("Token already exists for this poll");
+      ).to.be.revertedWithCustomError(tokenManager, "TokenAlreadyExists");
     });
 
     it("should allow creating tokens for different polls", async function () {
@@ -95,7 +95,7 @@ describe("TokenManager - Token Factory & Allocator", function () {
     it("should revert if non-voting contract tries to create token", async function () {
       await expect(
         tokenManager.connect(attacker).createPollToken(1, "Malicious", "MAL")
-      ).to.be.revertedWith("Only voting contract");
+      ).to.be.revertedWithCustomError(tokenManager, "Unauthorized");
     });
   });
 
@@ -139,25 +139,25 @@ describe("TokenManager - Token Factory & Allocator", function () {
     it("should revert if poll has no token", async function () {
       await expect(
         tokenManager.connect(votingContract).allocateTokens(99, alice.address, 5)
-      ).to.be.revertedWith("No token for this poll");
+      ).to.be.revertedWithCustomError(tokenManager, "NoTokenForPoll");
     });
 
     it("should revert allocating to zero address", async function () {
       await expect(
         tokenManager.connect(votingContract).allocateTokens(1, ethers.ZeroAddress, 5)
-      ).to.be.revertedWith("Invalid voter");
+      ).to.be.revertedWithCustomError(tokenManager, "ZeroAddress");
     });
 
     it("should revert allocating zero amount", async function () {
       await expect(
         tokenManager.connect(votingContract).allocateTokens(1, alice.address, 0)
-      ).to.be.revertedWith("Amount must be positive");
+      ).to.be.revertedWithCustomError(tokenManager, "ZeroAmount");
     });
 
     it("should revert if non-voting contract tries to allocate", async function () {
       await expect(
         tokenManager.connect(attacker).allocateTokens(1, alice.address, 5)
-      ).to.be.revertedWith("Only voting contract");
+      ).to.be.revertedWithCustomError(tokenManager, "Unauthorized");
     });
   });
 
@@ -193,13 +193,13 @@ describe("TokenManager - Token Factory & Allocator", function () {
 
       await expect(
         tokenManager.connect(votingContract).batchAllocateTokens(1, voters, amounts)
-      ).to.be.revertedWith("Array length mismatch");
+      ).to.be.revertedWithCustomError(tokenManager, "ArrayLengthMismatch");
     });
 
     it("should revert if arrays are empty", async function () {
       await expect(
         tokenManager.connect(votingContract).batchAllocateTokens(1, [], [])
-      ).to.be.revertedWith("Empty arrays");
+      ).to.be.revertedWithCustomError(tokenManager, "EmptyArray");
     });
 
     it("should revert if any voter is zero address", async function () {
@@ -208,7 +208,7 @@ describe("TokenManager - Token Factory & Allocator", function () {
 
       await expect(
         tokenManager.connect(votingContract).batchAllocateTokens(1, voters, amounts)
-      ).to.be.revertedWith("Invalid voter");
+      ).to.be.revertedWithCustomError(tokenManager, "ZeroAddress");
     });
 
     it("should revert if any amount is zero", async function () {
@@ -217,7 +217,7 @@ describe("TokenManager - Token Factory & Allocator", function () {
 
       await expect(
         tokenManager.connect(votingContract).batchAllocateTokens(1, voters, amounts)
-      ).to.be.revertedWith("Amount must be positive");
+      ).to.be.revertedWithCustomError(tokenManager, "ZeroAmount");
     });
   });
 
@@ -259,13 +259,13 @@ describe("TokenManager - Token Factory & Allocator", function () {
       // 4th burn should fail
       await expect(
         tokenManager.connect(votingContract).burnTokensForVote(1, bob.address)
-      ).to.be.revertedWith("Insufficient tokens");
+      ).to.be.revertedWithCustomError(tokenManager, "InsufficientTokens");
     });
 
     it("should revert if poll has no token", async function () {
       await expect(
         tokenManager.connect(votingContract).burnTokensForVote(99, alice.address)
-      ).to.be.revertedWith("No token for this poll");
+      ).to.be.revertedWithCustomError(tokenManager, "NoTokenForPoll");
     });
   });
 
@@ -343,7 +343,7 @@ describe("TokenManager - Token Factory & Allocator", function () {
     it("should revert enabling if poll has no token", async function () {
       await expect(
         tokenManager.connect(votingContract).enableTokenVoting(99)
-      ).to.be.revertedWith("No token for this poll");
+      ).to.be.revertedWithCustomError(tokenManager, "NoTokenForPoll");
     });
   });
 });

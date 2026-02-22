@@ -246,7 +246,7 @@ describe("ElectionsManager - Token Integration", function () {
 
       await expect(
         electionsManager.connect(bob).voteInPoll(tokenOnlyPollId, 1)
-      ).to.be.revertedWith("Token voting required");
+      ).to.be.revertedWithCustomError(electionsManager, "TokenVotingRequired");
     });
   });
 
@@ -300,13 +300,13 @@ describe("ElectionsManager - Token Integration", function () {
 
       await expect(
         electionsManager.connect(alice).voteInPollWithToken(pollId, 2, alice.address)
-      ).to.be.revertedWith("Already voted.");
+      ).to.be.revertedWithCustomError(electionsManager, "AlreadyVoted");
     });
 
     it("should prevent voting without tokens", async function () {
       await expect(
         electionsManager.connect(charlie).voteInPollWithToken(pollId, 1, charlie.address)
-      ).to.be.revertedWith("Insufficient tokens");
+      ).to.be.revertedWithCustomError(electionsManager, "InsufficientTokens");
     });
 
     it("should not allow voting on non-token enabled poll", async function () {
@@ -331,7 +331,7 @@ describe("ElectionsManager - Token Integration", function () {
 
       await expect(
         electionsManager.connect(alice).voteInPollWithToken(noTokenPollId, 1, alice.address)
-      ).to.be.revertedWith("Token voting not enabled");
+      ).to.be.revertedWithCustomError(electionsManager, "TokenVotingNotEnabled");
     });
   });
 

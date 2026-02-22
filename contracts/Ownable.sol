@@ -2,6 +2,8 @@
 
 pragma solidity ^0.8.20;
 
+import "./VotingErrors.sol";
+
 /**
  * @title Ownable (DEPRECATED)
  * @notice This contract is NOT used in the inheritance chain.
@@ -24,20 +26,20 @@ contract Ownable {
 
 	// Restrict to owner
 	modifier onlyOwner() {
-		require(msg.sender == owner, "Only owner can perform this action.");
+		if (!(msg.sender == owner)) revert Unauthorized();
 		_;
 	}
 
 	// Transfer ownership (2-step process)
 	function transferOwnership(address _newOwner) public onlyOwner {
-		require(_newOwner != address(0), "New owner is the zero address.");
+		if (!(_newOwner != address(0))) revert ZeroAddress();
 		pendingOwner = _newOwner;
 		emit OwnershipTransferStarted(owner, _newOwner);
 	}
 
 	// New owner accepts ownership
 	function acceptOwnership() public {
-		require(msg.sender == pendingOwner, "Only pending owner can accept.");
+		if (!(msg.sender == pendingOwner)) revert OnlyPendingOwner();
 		address previous = owner;
 		owner = pendingOwner;
 		pendingOwner = address(0);
@@ -46,7 +48,7 @@ contract Ownable {
 
 	// Cancel pending ownership transfer
 	function cancelOwnershipTransfer() public onlyOwner {
-		require(pendingOwner != address(0), "No pending transfer.");
+		if (!(pendingOwner != address(0))) revert NoTransferPending();
 		pendingOwner = address(0);
 	}
 

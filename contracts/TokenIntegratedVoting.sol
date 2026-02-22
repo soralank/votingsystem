@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import "./TimeValidator.sol";
 import "./TokenManager.sol";
 import "./VotingPaymaster.sol";
+import "./VotingErrors.sol";
 
 /**
  * @title TokenIntegratedVoting
@@ -17,7 +18,7 @@ contract TokenIntegratedVoting is TimeValidator {
     uint256 private constant _ENTERED = 2;
 
     modifier nonReentrant() {
-        require(_reentrancyStatus != _ENTERED, "Reentrant call");
+        if (!(_reentrancyStatus != _ENTERED)) revert ReentrantCall();
         _reentrancyStatus = _ENTERED;
         _;
         _reentrancyStatus = _NOT_ENTERED;
@@ -65,7 +66,7 @@ contract TokenIntegratedVoting is TimeValidator {
     event OwnershipTransferCancelled(address indexed owner);
 
     modifier onlyOwner() {
-        require(msg.sender == owner, "Only owner can call");
+        if (!(msg.sender == owner)) revert Unauthorized();
         _;
     }
 
@@ -83,8 +84,8 @@ contract TokenIntegratedVoting is TimeValidator {
      * @param _tokenManager Address of TokenManager
      */
     function setTokenManager(address _tokenManager) external onlyOwner {
-        require(_tokenManager != address(0), "Invalid token manager");
-        require(!infrastructureLocked, "Infra locked");
+        if (!(_tokenManager != address(0))) revert ZeroAddress();
+        if (infrastructureLocked) revert InfraLocked();
         tokenManager = TokenManager(_tokenManager);
         emit TokenManagerSet(_tokenManager);
     }
@@ -94,8 +95,8 @@ contract TokenIntegratedVoting is TimeValidator {
      * @param _paymaster Address of VotingPaymaster
      */
     function setVotingPaymaster(address payable _paymaster) external onlyOwner {
-        require(_paymaster != address(0), "Bad paymaster");
-        require(!infrastructureLocked, "Infra locked");
+        if (!(_paymaster != address(0))) revert BadPaymaster();
+        if (infrastructureLocked) revert InfraLocked();
         votingPaymaster = VotingPaymaster(_paymaster);
         emit PaymasterSet(_paymaster);
     }
@@ -150,7 +151,7 @@ contract TokenIntegratedVoting is TimeValidator {
         string calldata tokenName,
         string calldata tokenSymbol
     ) external virtual onlyOwner {
-        require(address(tokenManager) != address(0), "No TM");
+        if (!(address(tokenManager) != address(0))) revert NoTokenManager();
 
         tokenManager.createPollToken(pollId, tokenName, tokenSymbol);
     }
@@ -166,8 +167,8 @@ contract TokenIntegratedVoting is TimeValidator {
         address[] calldata voters,
         uint256[] calldata amounts
     ) external virtual onlyOwner {
-        require(address(tokenManager) != address(0), "No TM");
-        require(voters.length > 0, "Empty array");
+        if (!(address(tokenManager) != address(0))) revert NoTokenManager();
+        if (!(voters.length > 0)) revert EmptyArray();
 
         TokenConfig memory config = pollTokenConfigs[pollId];
 
@@ -187,7 +188,7 @@ contract TokenIntegratedVoting is TimeValidator {
             tokenManager.batchAllocateTokens(pollId, voters, uniformAmounts);
         } else {
             // Use provided amounts array
-            require(voters.length == amounts.length, "Array length mismatch");
+            if (!(voters.length == amounts.length)) revert ArrayLengthMismatch();
             tokenManager.batchAllocateTokens(pollId, voters, amounts);
         }
     }
@@ -210,8 +211,8 @@ contract TokenIntegratedVoting is TimeValidator {
         // - Option is valid
         // - Voter has sufficient tokens
 
-        require(address(tokenManager) != address(0), "No TM");
-        require(!hasVotedWithToken[pollId][voter], "Token used");
+        if (!(address(tokenManager) != address(0))) revert NoTokenManager();
+        if (hasVotedWithToken[pollId][voter]) revert TokenAlreadyUsed();
 
         // Burn tokens
         tokenManager.burnTokensForVote(pollId, voter);
@@ -261,7 +262,7 @@ contract TokenIntegratedVoting is TimeValidator {
      * @param newOwner New owner address
      */
     function transferOwnership(address newOwner) external onlyOwner {
-        require(newOwner != address(0), "Zero address");
+        if (!(newOwner != address(0))) revert ZeroAddress();
         pendingOwner = newOwner;
         emit OwnershipTransferStarted(owner, newOwner);
     }
@@ -270,7 +271,7 @@ contract TokenIntegratedVoting is TimeValidator {
      * @notice Accept ownership (2-step process, step 2)
      */
     function acceptOwnership() external {
-        require(msg.sender == pendingOwner, "Only pending owner can accept");
+        if (!(msg.sender == pendingOwner)) revert OnlyPendingOwner();
         address oldOwner = owner;
         owner = pendingOwner;
         pendingOwner = address(0);

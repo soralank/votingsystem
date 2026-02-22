@@ -1,5 +1,6 @@
-# Upgradeable Contracts Module - Complete Guide
-# Contact: ankit.soral@outlook.com
+# Upgradeable Contracts Module
+
+Contact: ankit.soral@outlook.com
 
 ## Overview
 
@@ -9,6 +10,8 @@ This module implements **upgradeable smart contracts** for the Voting System usi
 - **Add new features** without migrating data
 - **Preserve all existing poll data, votes, and tokens**
 - **Maintain the same contract address** users interact with
+
+> **See also:** [ARCHITECTURE.md §13 — What Would V2 Change?](../ARCHITECTURE.md) for the full architectural delta, design philosophy tensions, and migration considerations between V1 and V2.
 
 ---
 
@@ -55,19 +58,18 @@ This module implements **upgradeable smart contracts** for the Voting System usi
 
 ## What's Included
 
-### V1 (Current Functionality)
-- `ElectionsManagerUpgradeable.sol` - All existing voting features
-- Full backward compatibility with non-upgradeable version
-- Storage layout optimized for future upgrades
+### V1 (Current)
+- `ElectionsManagerUpgradeable.sol` — Full feature parity with non-upgradeable version
+- Storage layout optimised for future upgrades
 
 ### V2 (Example Upgrade)
-- `ElectionsManagerUpgradeableV2.sol` - V1 + new features:
-  - ✅ **Poll Categories** - Organize polls by type
-  - ✅ **Vote Weight Multipliers** - VIP voters can have 2x, 3x vote weight
-  - ✅ **Pause/Unpause Polls** - Emergency stop mechanism
-  - ✅ **Batch Voting** - Vote in multiple polls at once
-  - ✅ **Enhanced Statistics** - Participation rate, vote diversity
-  - ✅ **Category Queries** - Get all polls in a category
+- `ElectionsManagerUpgradeableV2.sol` — V1 plus:
+  - **Poll Categories** — Organise polls by type
+  - **Vote Weight Multipliers** — VIP voters with configurable weight (2x, 3x)
+  - **Pause/Unpause Polls** — Emergency stop mechanism
+  - **Batch Voting** — Vote in multiple polls in a single transaction
+  - **Enhanced Statistics** — Participation rate, vote diversity
+  - **Category Queries** — Retrieve all polls in a category
 
 ---
 
@@ -343,29 +345,29 @@ npx hardhat ignition deploy ignition/modules/UpgradeToV3.ts \
 
 ## Best Practices
 
-### ✅ DO
+### DO
 
 1. **Always test upgrades on testnet first**
-2. **Keep storage layout consistent** (never remove/reorder state variables)
+2. **Keep storage layout consistent** — never remove or reorder existing state variables
 3. **Use storage gaps** in every upgradeable contract
-4. **Version all implementations** (VERSION constant)
+4. **Version all implementations** with a `VERSION` constant
 5. **Document all breaking changes** in upgrade guides
-6. **Verify storage layout** with hardhat-upgrades plugin (if using)
+6. **Verify storage layout** with the hardhat-upgrades plugin
 7. **Emit events on upgrade** for frontend monitoring
 
-### ❌ DON'T
+### DO NOT
 
-1. **Don't remove or reorder existing state variables**
-2. **Don't change inheritance order**
-3. **Don't make lib contracts upgradeable unless needed**
-4. **Don't upgrade without comprehensive testing**
-5. **Don't skip security audits for upgrades**
+1. **Remove or reorder existing state variables**
+2. **Change inheritance order**
+3. **Make library contracts upgradeable unless required**
+4. **Upgrade without comprehensive testing**
+5. **Skip security audits for upgrades with security-critical changes**
 
 ---
 
 ## Storage Layout Rules
 
-### ✅ Safe: Adding New Variables
+### Safe: Adding New Variables
 
 ```solidity
 // V1
@@ -381,7 +383,7 @@ contract V2 is V1 {
 }
 ```
 
-### ❌ Unsafe: Removing/Reordering
+### Unsafe: Removing or Reordering
 
 ```solidity
 // V1
@@ -470,7 +472,7 @@ contract.on("ContractUpgraded", (newVersion, implementation) => {
 
 ---
 
-##Production Deployment Checklist
+## Production Deployment Checklist
 
 ### Before Deploying V1
 
@@ -533,6 +535,10 @@ contract.on("ContractUpgraded", (newVersion, implementation) => {
 
 ---
 
-**Remember**: With great upgradeability comes great responsibility. Always test thoroughly before upgrading on mainnet!
+**Remember**: With great upgradeability comes great responsibility. Test thoroughly before upgrading on mainnet.
 
-Delegation toggle: Supported. Admin/owner must call enableDelegation(pollId) before delegation is allowed.
+Delegation toggle: Supported. Admin/owner must call `enableDelegation(pollId)` before delegation is allowed.
+
+---
+
+**Version**: 4.1.0 | **Last Updated**: 2026-02-22
