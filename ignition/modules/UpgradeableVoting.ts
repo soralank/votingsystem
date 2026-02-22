@@ -70,13 +70,9 @@ export default buildModule("UpgradeableVotingSystemV1", (m) => {
     id: "SetVotingPaymaster",
   });
 
-  // ========== Step 6: Fund Paymaster ==========
-
-  // Fund paymaster with 1 ETH
-  m.call(votingPaymaster, "fund", [], {
-    id: "FundPaymaster",
-    value: 1000000000000000000n, // 1 ETH
-  });
+  // NOTE: Paymaster is deployed UNFUNDED.
+  // Admin or franchisee should fund it manually after deployment:
+  //   votingPaymaster.fund({ value: <desired amount> })
 
   // ========== Return All Deployed Contracts ==========
 

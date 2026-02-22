@@ -13,15 +13,14 @@ import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
  *
  * And configures:
  * - TokenManager, Paymaster, SecretBallotManager, and FranchiseManager references in ElectionsManager
- * - Initial funding for the paymaster
+ *
+ * Note: VotingPaymaster is deployed UNFUNDED. Admin/franchisee must fund it
+ * manually post-deployment via votingPaymaster.fund({ value: <amount> })
  *
  * Note: Infrastructure is permanently locked after the first poll is created,
  * so all configuration must happen during deployment.
  */
 const GaslessVotingModule = buildModule("GaslessVotingModule", (m) => {
-  // Parameters
-  const initialFunding = m.getParameter("initialFunding", 1n * 10n ** 18n); // 1 ETH default
-
   // 1. Deploy ElectionsManager (main voting contract)
   const electionsManager = m.contract("ElectionsManager");
 
@@ -60,10 +59,11 @@ const GaslessVotingModule = buildModule("GaslessVotingModule", (m) => {
   // 9. Configure ElectionsManager with FranchiseManager reference
   m.call(electionsManager, "setFranchiseManager", [franchiseManager]);
 
-  // 10. Fund the paymaster with initial ETH to cover gas costs
-  m.call(votingPaymaster, "fund", [], { value: initialFunding });
+  // NOTE: Paymaster is deployed UNFUNDED.
+  // Admin or franchisee should fund it manually after deployment:
+  //   votingPaymaster.fund({ value: <desired amount> })
 
-  // 11. Deploy VotingReader (read-only helper for frontend queries)
+  // 10. Deploy VotingReader (read-only helper for frontend queries)
   //     Provides: isQuadraticVotingEnabled, getPollMaxChoices, isDelegated,
   //     getPollFeatures, getVoterStatus, and other aggregated view calls
   const votingReader = m.contract("VotingReader", [electionsManager]);

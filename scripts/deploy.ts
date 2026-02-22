@@ -90,15 +90,9 @@ async function main() {
   const tx3b = await electionsManager.setFranchiseManager(fmAddr);
   await tx3b.wait();
 
-  // --- Fund Paymaster (1 ETH for local/testnet, skip for mainnet or if low balance) ---
-  const INITIAL_FUNDING = ethers.parseEther("1.0");
-  if (balance > INITIAL_FUNDING * 2n) {
-    console.log("  → Funding paymaster with 1 ETH");
-    const tx4 = await votingPaymaster.fund({ value: INITIAL_FUNDING });
-    await tx4.wait();
-  } else {
-    console.log("  ⚠ Skipping paymaster funding (low balance)");
-  }
+  // NOTE: Paymaster is deployed but NOT funded.
+  // Admin or franchisee should fund it manually after deployment:
+  //   votingPaymaster.fund({ value: ethers.parseEther("<amount>") })
 
   // --- Summary ---
   console.log("");
@@ -113,6 +107,8 @@ async function main() {
   console.log("╚══════════════════════════════════════════════════════╝");
   console.log("");
   console.log("⚠  Infrastructure will lock permanently after first poll creation.");
+  console.log("⚠  VotingPaymaster is NOT funded. Admin/franchisee must fund it manually:");
+  console.log(`   votingPaymaster.fund({ value: ethers.parseEther("<amount>") })`);
   console.log("");
 }
 
