@@ -78,7 +78,7 @@ STANDALONE CONTRACTS (deployed separately, linked via interfaces)
 
 ### 2.2 Why Modular Composition?
 
-ElectionsManager compiles to approximately **23,932 bytes** — just under the Ethereum 24,576 byte contract size limit (EIP-170). Advanced voting state (multi-choice selections, quadratic allocations, delegation mappings, metadata URIs) was extracted into four lightweight module contracts to stay within this limit while preserving a single entry point for the frontend.
+ElectionsManager compiles to approximately **21,869 bytes** (after custom error optimisation; originally ~23,932 bytes with string-based errors) — well within the Ethereum 24,576 byte contract size limit (EIP-170). Advanced voting state (multi-choice selections, quadratic allocations, delegation mappings, metadata URIs) was extracted into four lightweight module contracts to stay within this limit while preserving a single entry point for the frontend.
 
 **Trade-off accepted:** Module calls are external calls, adding ~2,600 gas per `CALL` opcode versus internal function calls. This overhead is acceptable because:
 
@@ -129,7 +129,7 @@ This section enumerates the attack surfaces of the system, the mitigations imple
 | **Spoofing** | Attacker submits a vote impersonating another voter | `msg.sender` is the sole identity mechanism; gasless votes require a valid EIP-712 signature from the voter's private key with ECDSA malleability rejection (`s ≤ secp256k1n/2`) | Key compromise is outside contract scope |
 | **Tampering** | Admin modifies vote tallies after casting | Vote counts in `options[pollId][optionId].votes` are incremented atomically during the vote transaction; no `setVotes()` or `editVote()` function exists anywhere in the codebase | None within contract scope |
 | **Repudiation** | Voter denies casting a vote | Every vote emits an indexed `Voted` event on-chain; `hasVoted[pollId][voter]` is publicly readable | Blockchain immutability provides non-repudiation |
-| **Information Disclosure** | Admin peeks at vote distribution before reveal | `getOption()`, `getVoterChoice()`, `getWinner()`, `getVoterMultiChoices()`, and `getQuadraticVotes()` all require `polls[pollId].revealed == true` with **zero admin bypass** | Storage-level reads via `eth_getStorageAt` or archive nodes can extract private mappings (see §4.4) |
+| **Information Disclosure** | Admin peeks at vote distribution before reveal | `getOption()` returns vote counts as 0 when `revealed == false`; `getVoterChoice()`, `getWinner()`, `getVoterMultiChoices()`, and `getQuadraticVotes()` revert with `PollNotRevealed()` when `revealed == false` — **zero admin bypass** for any result data | Storage-level reads via `eth_getStorageAt` or archive nodes can extract private mappings (see §4.4) |
 | **Denial of Service** | Attacker floods poll with options or voters | `MAX_OPTIONS = 100`, `MAX_VOTERS_BATCH = 50`; poll creation requires owner or franchise manager authorisation | An authorised admin could create 100 meaningless options; mitigated by social trust in poll admin |
 | **Elevation of Privilege** | Non-owner calls owner-only functions | `onlyOwner`, `onlyAdminOrOwner`, `onlyVotingContract`, `onlyElectionsManager` modifiers; two-step ownership prevents accidental transfers | Compromised owner key grants full admin access |
 
@@ -446,7 +446,7 @@ The optional upgradeable path (UUPS proxy) allows logic upgrades while preservin
 
 - **V1:** Base voting functionality via `ElectionsManagerUpgradeable`
 - **V2:** Adds categories, weighted votes, pause/unpause, batch voting
-- **Future:** Storage gaps (`uint256[50] private __gap`) reserve slots for future state variables
+- **Future:** Storage gaps (`uint256[48] private __gap`) reserve slots for future state variables
 
 The upgrade requires owner authorisation (`_authorizeUpgrade` calls `onlyOwner`). In a production deployment with multi-sig ownership, this means upgrades require M-of-N approval.
 
@@ -470,10 +470,10 @@ Beyond the storage gap mechanism, the following storage collision risks exist:
 
 | Risk | Description | Mitigation |
 |------|-------------|------------|
-| **Variable reordering** | Changing the order of state variables in an upgraded implementation shifts storage slot assignments, silently corrupting data | Code review discipline; the `uint256[50] __gap` pattern is applied in V1, reduced to `uint256[46] __gapV2` in V2 (4 new variables added) |
+| **Variable reordering** | Changing the order of state variables in an upgraded implementation shifts storage slot assignments, silently corrupting data | Code review discipline; V1 declares `uint256[48] __gap`; V2 adds 4 new mappings and declares its own `uint256[45] __gapV2` for future V3 headroom |
 | **Inheritance order change** | Modifying the inheritance chain changes the base contract storage layout | V2 inherits from V1 directly; this chain must never be reordered |
 | **Type change** | Changing a variable's type (e.g., `uint256` to `address`) while keeping the same slot causes silent misinterpretation | No automated detection; relies on developer diligence |
-| **Gap arithmetic error** | V2 declares `uint256[46] __gapV2` (50 − 4 = 46). An arithmetic mistake here would overwrite existing state in V3+ | Verified in `upgradeable.test.ts` via storage slot validation tests |
+| **Gap arithmetic error** | V2 declares `uint256[45] __gapV2` (separate from V1's `uint256[48] __gap`). An arithmetic mistake here would overwrite existing state in V3+ | Verified in `upgradeable.test.ts` via storage slot validation tests |
 
 **Tooling recommended:** OpenZeppelin's `@openzeppelin/upgrades-core` provides `validateUpgrade()` which detects storage layout incompatibilities automatically. This is not currently integrated into the CI pipeline.
 
@@ -514,7 +514,7 @@ Each poll has its own admin, distinct from the contract owner:
 - **Poll Admin:** Local authority (add options, add voters, configure voting features — all before poll start only)
 - **Voter:** Can only vote and delegate
 
-After a poll starts, the poll admin can only add voters; after voting closes, no admin action is possible. This temporal restriction is enforced by `_hasStarted()` and `_hasEnded()` checks.
+After a poll starts, no admin action is possible — `addVoter()`, `addVoters()`, `removeVoter()`, `addOptionToPoll()`, and all configuration functions revert with `PollStarted()` once `block.timestamp >= startTime`. This temporal restriction is enforced by `_hasStarted()` and `_hasEnded()` checks.
 
 ### 7.5 Governance Hardening Checklist
 
@@ -1147,7 +1147,7 @@ Step-by-step runbooks for common operational scenarios. Each playbook specifies 
 | | 8 | (Optional) `setPollMetadata(pollId, metadataURI)` | `PollMetadataSet` |
 | **Active** | 9 | Wait for `block.timestamp >= startTime` | — |
 | | 10 | Voters cast votes via `voteInPoll()` / `voteInPollWithToken()` | `Voted` / `VotedWithToken` |
-| | 11 | (Optional) Additional voters can be added during active period | `VoterAuthorized` |
+| | 11 | No admin actions possible during active period — voters and options can only be added before `startTime` | — |
 | **Ended** | 12 | Wait for `block.timestamp >= endTime + TIME_BUFFER` | — |
 | | 13 | (Secret ballot only) Voters call `revealVote()` during reveal window | `VoteRevealed` |
 | **Terminal** | 14 | Anyone calls `revealResults(pollId)` | `ResultsRevealed` |
