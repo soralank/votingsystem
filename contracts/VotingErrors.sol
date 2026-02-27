@@ -133,3 +133,6 @@ error EmptyMetadata();
 
 // ── Upgradeable ─────────────────────────────────────────────────
 error WeightOutOfRange();
+error InvalidExtension();
+error PollAlreadyEnded();
+error EmptyDescription();

@@ -48,6 +48,12 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
     mapping(uint => string) public pollTitles;
     mapping(string => bool) private titleExists;
 
+    // Duplicate option name prevention (ported from base)
+    mapping(uint => mapping(string => bool)) public pollOptionNames;
+
+    // Track polls created via FranchiseManager (ported from base)
+    mapping(uint => bool) internal isFranchisePoll;
+
     // Constants
     uint public constant MIN_POLL_DURATION = 300;
     uint public constant TIME_BUFFER = 30;
@@ -71,6 +77,7 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
     event Initialized(address indexed initializer);
     event TokenManagerSet(address indexed tokenManager);
     event PaymasterSet(address indexed paymaster);
+    event PollAdminChanged(uint indexed pollId, address indexed oldAdmin, address indexed newAdmin);
 
     // Franchise manager (sub-admin franchise system)
     address public franchiseMgr;
@@ -173,6 +180,11 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
         pollTitles[pollId] = title;
         titleExists[title] = true;
 
+        // Track if this poll was created via franchise manager
+        if (msg.sender == franchiseMgr) {
+            isFranchisePoll[pollId] = true;
+        }
+
         if (enableTokenVoting && address(tokenManager) != address(0)) {
             string memory tokenName = string(abi.encodePacked("Vote Token - ", title));
             string memory tokenSymbol = string(abi.encodePacked("VOTE", _uint2str(pollId)));
@@ -187,12 +199,14 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
         if (!(polls[pollId].exists)) revert PollNotFound();
         if (!(block.timestamp < polls[pollId].startTime)) revert PollStarted();
         if (polls[pollId].ended) revert PollEnded();
-        // Note: p.ended is kept in struct for storage layout but never set manually
         if (!(polls[pollId].optionsCount < MAX_OPTIONS)) revert MaxOptionsReached();
+        // Prevent duplicate option names within a poll (ported from base)
+        if (pollOptionNames[pollId][optionName]) revert DuplicateName();
 
         polls[pollId].optionsCount++;
         uint optionId = polls[pollId].optionsCount;
         pollOptions[pollId][optionId] = optionName;
+        pollOptionNames[pollId][optionName] = true;
 
         emit OptionAdded(pollId, optionId, optionName);
     }
@@ -220,6 +234,17 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
                 emit VoterAuthorized(pollId, voters[i]);
             }
         }
+    }
+
+    function removeVoter(uint pollId, address voter) external onlyAdminOrOwner(pollId) {
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (!(block.timestamp < polls[pollId].startTime)) revert PollStarted();
+        if (polls[pollId].ended) revert PollEnded();
+        if (!(authorizedVoters[pollId][voter])) revert Unauthorized();
+        if (hasVoted[pollId][voter]) revert AlreadyVoted();
+
+        authorizedVoters[pollId][voter] = false;
+        emit VoterUnauthorized(pollId, voter);
     }
 
     function addVotersWithTokens(uint pollId, address[] calldata voters, uint256 tokensPerVoter) external onlyAdminOrOwner(pollId) {
@@ -319,6 +344,60 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
         return block.timestamp >= polls[pollId].startTime && block.timestamp < polls[pollId].endTime && !polls[pollId].ended;
     }
 
+    function isPollStarted(uint pollId) external view returns (bool) {
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        return block.timestamp >= polls[pollId].startTime;
+    }
+
+    function isPollEnded(uint pollId) external view returns (bool) {
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        return block.timestamp >= polls[pollId].endTime;
+    }
+
+    function getPollStatus(uint pollId) external view returns (bool started, bool active, bool ended, bool revealed) {
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        Poll storage p = polls[pollId];
+        started = block.timestamp >= p.startTime;
+        active = block.timestamp >= p.startTime && block.timestamp < p.endTime && !p.ended;
+        ended = block.timestamp >= p.endTime;
+        revealed = p.revealed;
+    }
+
+    function getPollsCount() external view returns (uint) {
+        return pollsCount;
+    }
+
+    function getOptionsCount(uint pollId) external view returns (uint) {
+        return polls[pollId].optionsCount;
+    }
+
+    function getPollStartTime(uint pollId) external view returns (uint) {
+        return polls[pollId].startTime;
+    }
+
+    function getPollEndTime(uint pollId) external view returns (uint) {
+        return polls[pollId].endTime;
+    }
+
+    /**
+     * @notice Transfer poll admin to a new address (ported from base)
+     * @dev FranchiseManager can only change admin of polls it created
+     */
+    function changePollAdmin(uint pollId, address newAdmin) external {
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (!(newAdmin != address(0))) revert ZeroAddress();
+        if (!(newAdmin != polls[pollId].admin)) revert SameAddress();
+
+        bool isPollAdmin = msg.sender == polls[pollId].admin;
+        bool isOwnerCaller = msg.sender == owner();
+        bool isFranchiseMgr = msg.sender == franchiseMgr && isFranchisePoll[pollId];
+
+        if (!(isPollAdmin || isOwnerCaller || isFranchiseMgr)) revert Unauthorized();
+        address oldAdmin = polls[pollId].admin;
+        polls[pollId].admin = newAdmin;
+        emit PollAdminChanged(pollId, oldAdmin, newAdmin);
+    }
+
     function getWinner(uint pollId) external view returns (uint winnerId, string memory winnerName) {
         if (!(polls[pollId].revealed)) revert PollNotRevealed();
 
@@ -368,5 +447,5 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
         return string(bstr);
     }
 
-    uint256[48] private __gap;
+    uint256[46] private __gap; // reduced from 48: added pollOptionNames + isFranchisePoll
 }

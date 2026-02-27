@@ -169,6 +169,90 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
     });
   });
 
+  // ==================== PART 1B: V1 PORTED FEATURES ====================
+
+  describe("Part 1B: Test V1 Ported Features (from Base Model)", function () {
+    let portedPollId: number;
+
+    it("should test convenience view functions", async function () {
+      // getPollsCount
+      expect(await electionsManagerV1.getPollsCount()).to.equal(pollIdBeforeUpgrade);
+
+      // getOptionsCount
+      expect(await electionsManagerV1.getOptionsCount(pollIdBeforeUpgrade)).to.equal(2);
+
+      // getPollStartTime / getPollEndTime
+      const startTime = await electionsManagerV1.getPollStartTime(pollIdBeforeUpgrade);
+      const endTime = await electionsManagerV1.getPollEndTime(pollIdBeforeUpgrade);
+      expect(Number(startTime)).to.be.greaterThan(0);
+      expect(Number(endTime)).to.be.greaterThan(Number(startTime));
+
+      // getPollStatus
+      const [started, active, ended, revealed] = await electionsManagerV1.getPollStatus(pollIdBeforeUpgrade);
+      expect(started).to.be.true;
+      expect(revealed).to.be.false;
+
+      // isPollStarted / isPollEnded
+      expect(await electionsManagerV1.isPollStarted(pollIdBeforeUpgrade)).to.be.true;
+
+      console.log("✓ All convenience view functions working");
+    });
+
+    it("should prevent duplicate option names", async function () {
+      const now = await getCurrentTimestamp();
+      await electionsManagerV1.createPoll(
+        "Ported Features Poll",
+        admin.address,
+        now + 100,
+        1000,
+        false,
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
+      );
+      portedPollId = bnToNumber(await electionsManagerV1.pollsCount());
+
+      await electionsManagerV1.connect(admin).addOptionToPoll(portedPollId, "UniqueOption");
+
+      // Adding same option name should revert
+      await expect(
+        electionsManagerV1.connect(admin).addOptionToPoll(portedPollId, "UniqueOption")
+      ).to.be.revertedWithCustomError(electionsManagerV1, "DuplicateName");
+
+      console.log("✓ Duplicate option names prevented");
+    });
+
+    it("should remove voter before poll starts", async function () {
+      await electionsManagerV1.connect(admin).addVoter(portedPollId, charlie.address);
+      expect(await electionsManagerV1.isVoterAuthorized(portedPollId, charlie.address)).to.be.true;
+
+      await electionsManagerV1.connect(admin).removeVoter(portedPollId, charlie.address);
+      expect(await electionsManagerV1.isVoterAuthorized(portedPollId, charlie.address)).to.be.false;
+
+      console.log("✓ removeVoter works correctly");
+    });
+
+    it("should change poll admin", async function () {
+      expect((await electionsManagerV1.polls(portedPollId)).admin).to.equal(admin.address);
+
+      await electionsManagerV1.connect(admin).changePollAdmin(portedPollId, alice.address);
+      expect((await electionsManagerV1.polls(portedPollId)).admin).to.equal(alice.address);
+
+      // Change back for remaining tests
+      await electionsManagerV1.connect(alice).changePollAdmin(portedPollId, admin.address);
+
+      console.log("✓ changePollAdmin works correctly");
+    });
+
+    it("should reject changePollAdmin from unauthorized caller", async function () {
+      await expect(
+        electionsManagerV1.connect(charlie).changePollAdmin(portedPollId, charlie.address)
+      ).to.be.revertedWithCustomError(electionsManagerV1, "Unauthorized");
+
+      console.log("✓ Unauthorized changePollAdmin rejected");
+    });
+  });
+
   // ==================== PART 2: UPGRADE TO V2 ====================
 
   describe("Part 2: Upgrade from V1 to V2", function () {
@@ -267,8 +351,10 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
     });
 
     it("should preserve pollsCount", async function () {
-      expect(await electionsManagerV2.pollsCount()).to.equal(pollIdBeforeUpgrade);
-      console.log("✓ PollsCount preserved:", pollIdBeforeUpgrade);
+      // pollIdBeforeUpgrade=1 (Test Poll V1), plus 1 more from Part 1B (Ported Features Poll) = 2
+      const count = bnToNumber(await electionsManagerV2.pollsCount());
+      expect(count).to.equal(2);
+      console.log("✓ PollsCount preserved:", count);
     });
 
     it("should preserve ownership", async function () {
@@ -296,7 +382,7 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
       );
 
       pollIdV2 = bnToNumber(await electionsManagerV2.pollsCount());
-      expect(pollIdV2).to.equal(2);
+      expect(pollIdV2).to.equal(3); // 1 (V1) + 1 (Ported Features) + 1 (this)
 
       // Set category (new V2 feature)
       await electionsManagerV2.connect(admin).setPollCategory(pollIdV2, "Governance");
@@ -404,6 +490,83 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
 
       console.log("✓ Found", governancePolls.length, "poll(s) in Governance category");
     });
+
+    it("should extend poll deadline (new V2 feature)", async function () {
+      // Create a new poll for deadline extension test
+      const now = await getCurrentTimestamp();
+      await electionsManagerV2.createPoll(
+        "Deadline Extension Poll",
+        admin.address,
+        now + 10,
+        600,
+        false,
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
+      );
+      const extPollId = bnToNumber(await electionsManagerV2.pollsCount());
+
+      const oldEndTime = bnToNumber(await electionsManagerV2.getPollEndTime(extPollId));
+
+      // Extend by 300 seconds
+      const tx = await electionsManagerV2.connect(admin).extendPollDeadline(extPollId, 300);
+      await expect(tx).to.emit(electionsManagerV2, "PollDeadlineExtended");
+
+      const newEndTime = bnToNumber(await electionsManagerV2.getPollEndTime(extPollId));
+      expect(newEndTime).to.equal(oldEndTime + 300);
+
+      console.log("✓ Poll deadline extended by 300s:", oldEndTime, "->", newEndTime);
+    });
+
+    it("should emergency end a poll (new V2 feature)", async function () {
+      const now = await getCurrentTimestamp();
+      await electionsManagerV2.createPoll(
+        "Emergency End Poll",
+        admin.address,
+        now + 10,
+        600,
+        false,
+        false,
+        ethers.ZeroAddress,
+        ethers.ZeroAddress
+      );
+      const emergPollId = bnToNumber(await electionsManagerV2.pollsCount());
+
+      await electionsManagerV2.connect(admin).addOptionToPoll(emergPollId, "A");
+      await electionsManagerV2.connect(admin).addVoter(emergPollId, alice.address);
+
+      // Advance time to start the poll
+      await ethers.provider.send("evm_setNextBlockTimestamp", [now + 20]);
+      await ethers.provider.send("evm_mine");
+
+      // Emergency end it
+      const tx = await electionsManagerV2.connect(admin).emergencyEndPoll(emergPollId);
+      await expect(tx).to.emit(electionsManagerV2, "PollEmergencyEnded");
+
+      // Verify poll is ended
+      expect(await electionsManagerV2.emergencyEnded(emergPollId)).to.be.true;
+
+      // Voting should now fail
+      await expect(
+        electionsManagerV2.connect(alice).voteInPoll(emergPollId, 1)
+      ).to.be.revertedWithCustomError(electionsManagerV2, "PollAlreadyEnded");
+
+      console.log("✓ Emergency end poll works, voting blocked");
+    });
+
+    it("should set and get poll description (new V2 feature)", async function () {
+      await electionsManagerV2.connect(admin).setPollDescription(pollIdV2, "This is a governance poll about protocol changes.");
+
+      const desc = await electionsManagerV2.getPollDescription(pollIdV2);
+      expect(desc).to.equal("This is a governance poll about protocol changes.");
+
+      // Empty description should revert
+      await expect(
+        electionsManagerV2.connect(admin).setPollDescription(pollIdV2, "")
+      ).to.be.revertedWithCustomError(electionsManagerV2, "EmptyDescription");
+
+      console.log("✓ Poll description set and retrieved");
+    });
   });
 
   // ==================== PART 5: BACKWARD COMPATIBILITY ====================
@@ -457,15 +620,19 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
   describe("Part 6: Storage Layout Safety", function () {
     it("should not corrupt storage slots after upgrade", async function () {
       // Check that all key storage variables are in correct slots
-      expect(await electionsManagerV2.pollsCount()).to.equal(2);
+      // At this point: poll1=V1, poll2=Ported, poll3=V2Category, poll4=Extend, poll5=Emergency
+      const count = bnToNumber(await electionsManagerV2.pollsCount());
+      expect(count).to.equal(5);
       expect(await electionsManagerV2.owner()).to.equal(owner.address);
 
       // Check specific poll data
       const poll1 = await electionsManagerV2.polls(1);
       const poll2 = await electionsManagerV2.polls(2);
+      const poll3 = await electionsManagerV2.polls(3);
 
       expect(poll1.title).to.equal("Test Poll V1");
-      expect(poll2.title).to.equal("V2 Poll with Category");
+      expect(poll2.title).to.equal("Ported Features Poll");
+      expect(poll3.title).to.equal("V2 Poll with Category");
 
       console.log("✓ Storage slots validated - no corruption detected");
     });
@@ -539,7 +706,8 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
 
       // Verify poll was created on the upgradeable ElectionsManager
       const pollCount = bnToNumber(await electionsManagerV2.pollsCount());
-      expect(pollCount).to.equal(3); // 2 existing + 1 franchise
+      // 2 (V1+ported) + 1 (V2 category) + 1 (extend) + 1 (emergency) + 1 (franchise) = 6
+      expect(pollCount).to.equal(6);
 
       const poll = await electionsManagerV2.polls(pollCount);
       expect(poll.title).to.equal("Franchise Poll via Proxy");
@@ -580,7 +748,7 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
       );
 
       const pollCount = bnToNumber(await electionsManagerV2.pollsCount());
-      expect(pollCount).to.equal(4);
+      expect(pollCount).to.equal(7); // 6 + 1 owner poll
 
       console.log("✓ Owner can still create polls directly (ID:", pollCount, ")");
     });
@@ -590,7 +758,7 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
       expect(await electionsManagerV2.franchiseMgr()).to.equal(franchiseManager.target);
 
       // Verify franchise polls still show correct data
-      const franchisePoll = await electionsManagerV2.polls(3);
+      const franchisePoll = await electionsManagerV2.polls(6);
       expect(franchisePoll.title).to.equal("Franchise Poll via Proxy");
 
       console.log("✓ Franchise manager preserved and functional through proxy");
@@ -732,32 +900,31 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
 
   describe("Test Summary", function () {
     it("should print upgrade test summary", async function () {
-      console.log("\n" + "=".repeat(60));
+      console.log("=" .repeat(60));
       console.log("UPGRADE TEST SUMMARY");
       console.log("=".repeat(60));
       console.log("✓ V1 Deployment: Success");
-      console.log("✓ V1 Functionality: Verified");
+      console.log("✓ V1 Features Ported from Base:");
+      console.log("  - removeVoter()");
+      console.log("  - Convenience views (getPollsCount, getOptionsCount, etc.)");
+      console.log("  - getPollStatus() aggregate");
+      console.log("  - changePollAdmin()");
+      console.log("  - Duplicate option name prevention");
       console.log("✓ Upgrade V1 -> V2: Success");
       console.log("✓ Data Preservation: 100% (all data preserved)");
-      console.log("✓ New V2 Features: All working");
-      console.log("  - Poll categories");
+      console.log("✓ V2 Upgrade Features (new over V1):");
+      console.log("  - Poll categories & queries");
       console.log("  - Vote weight multipliers");
       console.log("  - Pause/unpause polls");
       console.log("  - Enhanced statistics");
-      console.log("  - Polls by category query");
+      console.log("  - Extend poll deadline");
+      console.log("  - Emergency end poll");
+      console.log("  - On-chain poll descriptions");
       console.log("✓ Franchise Support: Verified");
-      console.log("  - setFranchiseManager access control");
-      console.log("  - Franchise poll creation through proxy");
-      console.log("  - Non-authorized createPoll rejected");
-      console.log("  - Owner direct poll creation preserved");
       console.log("✓ Backward Compatibility: Fully maintained");
       console.log("✓ Storage Layout: No corruption");
       console.log("✓ Authorization: Only owner can upgrade");
       console.log("=".repeat(60));
-      console.log("Total Polls Created: 4 (1 V1, 1 V2, 1 franchise, 1 owner)");
-      console.log("Total Votes Cast: 4 (across both versions)");
-      console.log("Proxy Address:", proxyAddress);
-      console.log("=".repeat(60) + "\n");
 
       // Always pass
       expect(true).to.be.true;

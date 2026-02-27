@@ -17,6 +17,8 @@ contract ElectionsManagerUpgradeableV2 is ElectionsManagerUpgradeable {
     mapping(uint => mapping(address => uint)) public voteWeight;
     mapping(uint => bool) public pollPaused;
     mapping(uint => uint) public authorizedVoterCount;
+    mapping(uint => string) public pollDescriptions;
+    mapping(uint => bool) public emergencyEnded;
 
     event PollCategorized(uint indexed pollId, string category);
     event VoteWeightSet(uint indexed pollId, address indexed voter, uint weight);
@@ -25,6 +27,9 @@ contract ElectionsManagerUpgradeableV2 is ElectionsManagerUpgradeable {
     event VoterCountUpdated(uint indexed pollId, uint count);
     event UpgradedToV2(string version);
     event WeightedVoteApplied(uint indexed pollId, address indexed voter, uint optionId, uint additionalVotes);
+    event PollDeadlineExtended(uint indexed pollId, uint oldEndTime, uint newEndTime);
+    event PollEmergencyEnded(uint indexed pollId, address indexed caller);
+    event PollDescriptionSet(uint indexed pollId, string description);
 
     function initializeV2() public reinitializer(2) {
         emit UpgradedToV2(VERSION_V2);
@@ -76,6 +81,7 @@ contract ElectionsManagerUpgradeableV2 is ElectionsManagerUpgradeable {
 
     function voteInPoll(uint pollId, uint optionId) public override {
         if (pollPaused[pollId]) revert PollIsPaused();
+        if (emergencyEnded[pollId]) revert PollAlreadyEnded();
         super.voteInPoll(pollId, optionId);
 
         uint weight = voteWeight[pollId][msg.sender];
@@ -92,6 +98,7 @@ contract ElectionsManagerUpgradeableV2 is ElectionsManagerUpgradeable {
      */
     function voteInPollWithToken(uint256 pollId, uint256 optionId, address voter) public override {
         if (pollPaused[pollId]) revert PollIsPaused();
+        if (emergencyEnded[pollId]) revert PollAlreadyEnded();
         super.voteInPollWithToken(pollId, optionId, voter);
 
         // Apply vote weight multiplier (same as voteInPoll)
@@ -179,5 +186,75 @@ contract ElectionsManagerUpgradeableV2 is ElectionsManagerUpgradeable {
         return VERSION_V2;
     }
 
-    uint256[45] private __gapV2;
+    // ═══════════════════════════════════════════════════════════
+    //  V2-EXCLUSIVE: Deadline Extension
+    // ═══════════════════════════════════════════════════════════
+
+    /**
+     * @notice Extend a poll's deadline (V2 upgrade feature)
+     * @dev Admin can extend an active or upcoming poll by additional seconds
+     * @param pollId Poll ID
+     * @param additionalSeconds Number of seconds to extend the deadline by
+     */
+    function extendPollDeadline(uint pollId, uint additionalSeconds) external onlyAdminOrOwner(pollId) {
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (polls[pollId].revealed) revert PollAlreadyRevealed();
+        if (emergencyEnded[pollId]) revert PollAlreadyEnded();
+        if (!(additionalSeconds > 0 && additionalSeconds <= 30 days)) revert InvalidExtension();
+
+        uint oldEndTime = polls[pollId].endTime;
+        polls[pollId].endTime = oldEndTime + additionalSeconds;
+
+        emit PollDeadlineExtended(pollId, oldEndTime, polls[pollId].endTime);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  V2-EXCLUSIVE: Emergency End Poll
+    // ═══════════════════════════════════════════════════════════
+
+    /**
+     * @notice Emergency end a poll before its natural deadline (V2 upgrade feature)
+     * @dev Only admin/owner can trigger. Sets ended=true, no more voting allowed.
+     * @param pollId Poll ID
+     */
+    function emergencyEndPoll(uint pollId) external onlyAdminOrOwner(pollId) {
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (polls[pollId].revealed) revert PollAlreadyRevealed();
+        if (emergencyEnded[pollId]) revert PollAlreadyEnded();
+
+        polls[pollId].ended = true;
+        emergencyEnded[pollId] = true;
+        // Set endTime to now so reveal buffer starts immediately
+        polls[pollId].endTime = block.timestamp;
+
+        emit PollEmergencyEnded(pollId, msg.sender);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  V2-EXCLUSIVE: Poll Descriptions
+    // ═══════════════════════════════════════════════════════════
+
+    /**
+     * @notice Set an on-chain description for a poll (V2 upgrade feature)
+     * @param pollId Poll ID
+     * @param description Description text
+     */
+    function setPollDescription(uint pollId, string calldata description) external onlyAdminOrOwner(pollId) {
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        if (!(bytes(description).length > 0)) revert EmptyDescription();
+        pollDescriptions[pollId] = description;
+        emit PollDescriptionSet(pollId, description);
+    }
+
+    /**
+     * @notice Get the on-chain description for a poll
+     * @param pollId Poll ID
+     * @return description The poll description
+     */
+    function getPollDescription(uint pollId) external view returns (string memory) {
+        if (!(polls[pollId].exists)) revert PollNotFound();
+        return pollDescriptions[pollId];
+    }
+
+    uint256[43] private __gapV2; // 50 - 6 new mappings (categories, weight, paused, voterCount, descriptions, emergencyEnded) - 1 reserve
 }

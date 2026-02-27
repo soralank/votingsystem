@@ -28,7 +28,7 @@ export default buildModule("UpgradeableVotingSystemV1", (m) => {
 
   // Deploy ERC1967Proxy
   // Note: Using OpenZeppelin's ERC1967Proxy from @openzeppelin/contracts
-  const proxy = m.contract("ERC1967Proxy", [
+  const proxy = m.contract("TestERC1967Proxy", [
     electionsManagerImpl,
     initializeData,
   ], {
