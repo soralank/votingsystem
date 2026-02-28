@@ -59,17 +59,31 @@ This module implements **upgradeable smart contracts** for the Voting System usi
 ## What's Included
 
 ### V1 (Current)
-- `ElectionsManagerUpgradeable.sol` — Full feature parity with non-upgradeable version
-- Storage layout optimised for future upgrades
+- `ElectionsManagerUpgradeable.sol` — Core election lifecycle with upgradeable-compatible base classes
+- **Core Features** (rewritten for upgradeable pattern):
+  - Create polls, add/remove options, add/remove voters, batch voters
+  - Vote (gas payment + token), reveal results, get winner
+  - Token integration (allocate, burn, balance check)
+  - Franchise manager support, infrastructure lock
+  - Duplicate title and option name prevention
+- **Ported from Base Model**:
+  - `removeVoter()` — Remove voter before poll starts
+  - `changePollAdmin()` — Transfer poll admin with franchise-aware auth
+  - `getPollsCount()`, `getOptionsCount()`, `getPollStartTime()`, `getPollEndTime()`
+  - `isPollStarted()`, `isPollEnded()`, `getPollStatus()`
+- **Not included** (separate modules in base, not relevant for upgrade demo):
+  - MultiChoiceVoting, QuadraticVoting, DelegationVoting, MetadataVoting, SecretBallotManager
+- Storage layout optimised for future upgrades (`__gap[46]`)
 
 ### V2 (Example Upgrade)
-- `ElectionsManagerUpgradeableV2.sol` — V1 plus:
-  - **Poll Categories** — Organise polls by type
-  - **Vote Weight Multipliers** — VIP voters with configurable weight (2x, 3x)
-  - **Pause/Unpause Polls** — Emergency stop mechanism
-  - **Batch Voting** — Vote in multiple polls in a single transaction
-  - **Enhanced Statistics** — Participation rate, vote diversity
-  - **Category Queries** — Retrieve all polls in a category
+- `ElectionsManagerUpgradeableV2.sol` — Extends V1 with:
+  - **Poll Categories** — Organise polls by type (`setPollCategory`, `getPollsByCategory`)
+  - **Vote Weight Multipliers** — VIP voters with configurable weight 1–10x (`setVoteWeight`, `getVoteWeight`)
+  - **Pause/Unpause Polls** — Emergency stop mechanism (`pausePoll`, `unpausePoll`)
+  - **Enhanced Statistics** — Participation rate, vote diversity, aggregate stats (`getParticipationRate`, `getVoteDiversity`, `getPollStats`)
+  - **Extend Poll Deadline** — Extend an active poll's end time (`extendPollDeadline`)
+  - **Emergency End Poll** — Force-end a poll before its natural deadline (`emergencyEndPoll`)
+  - **On-Chain Poll Descriptions** — Store poll descriptions on-chain (`setPollDescription`, `getPollDescription`)
 
 ---
 
@@ -159,14 +173,17 @@ npx hardhat test test/upgradeable.test.ts
 ```
 
 **Test Coverage**:
-- ✅  V1 deployment with proxy
+- ✅ V1 deployment with proxy
 - ✅ V1 functionality (create polls, vote, etc.)
+- ✅ V1 ported features (removeVoter, changePollAdmin, convenience views, duplicate prevention)
 - ✅ Upgrade from V1 to V2
 - ✅ Data preservation (polls, votes, tokens all preserved)
-- ✅ New V2 features work correctly
+- ✅ New V2 features work correctly (categories, weights, pause, extend deadline, emergency end, descriptions)
 - ✅ Storage layout validation (no corruption)
 - ✅ Authorization (only owner can upgrade)
 - ✅ Backward compatibility
+- ✅ Franchise support through proxy
+- ✅ Medium/low fix verification (M-6, M-7)
 
 **Expected Output**:
 ```
@@ -174,10 +191,18 @@ npx hardhat test test/upgradeable.test.ts
     Part 1: Deploy and Use V1
       ✓ should deploy V1 with proxy pattern
       ✓ should deploy TokenManager and VotingPaymaster
+      ✓ should deploy FranchiseManager before any polls (infra lock)
       ✓ should check V1 version
       ✓ should create poll in V1
       ✓ should add options and voters in V1
       ✓ should vote in V1 poll
+
+    Part 1B: Test V1 Ported Features (from Base Model)
+      ✓ should test convenience view functions
+      ✓ should prevent duplicate option names
+      ✓ should remove voter before poll starts
+      ✓ should change poll admin
+      ✓ should reject changePollAdmin from unauthorized caller
 
     Part 2: Upgrade from V1 to V2
       ✓ should deploy V2 implementation
@@ -202,6 +227,9 @@ npx hardhat test test/upgradeable.test.ts
       ✓ should get vote diversity (new V2 feature)
       ✓ should get poll stats (new V2 feature)
       ✓ should get polls by category (new V2 feature)
+      ✓ should extend poll deadline (new V2 feature)
+      ✓ should emergency end a poll (new V2 feature)
+      ✓ should set and get poll description (new V2 feature)
 
     Part 5: V1 Functionality Still Works After Upgrade
       ✓ should still allow voting in old V1 polls
@@ -212,10 +240,25 @@ npx hardhat test test/upgradeable.test.ts
       ✓ should not corrupt storage slots after upgrade
       ✓ should verify storage gap is preserved
 
+    Part 7: Franchise Support on Upgradeable Contracts
+      ✓ should verify franchise manager set in Part 1 is preserved through upgrade
+      ✓ should block setFranchiseManager after infrastructure lock
+      ✓ should reject non-owner setFranchiseManager
+      ✓ should grant franchise and create poll through proxy
+      ✓ should reject non-owner and non-franchise createPoll
+      ✓ should allow owner to still create polls directly
+      ✓ should preserve franchise manager after upgrade re-verification
+
+    Part 6: Medium/Low Fix Verification
+      ✓ should return diversity=0 from getPollStats before reveal (M-6)
+      ✓ should apply vote weight in token voting (M-7)
+      ✓ should emit WeightedVoteApplied for weighted votes (V2)
+      ✓ should emit TokenManagerSet and PaymasterSet on V1 config
+
     Test Summary
       ✓ should print upgrade test summary
 
-  29 passing (3s)
+  50 passing
 ```
 
 ---
@@ -225,11 +268,11 @@ npx hardhat test test/upgradeable.test.ts
 ### 1. Storage Gaps
 
 ```solidity
-// In V1
-uint256[50] private __gap;
+// In V1 (2 new mappings added: pollOptionNames, isFranchisePoll)
+uint256[46] private __gap;  // 48 original - 2 = 46 remaining slots
 
-// In V2 (4 new state variables added)
-uint256[46] private __gapV2;  // 50 - 4 = 46 remaining slots
+// In V2 (6 new state variables added)
+uint256[43] private __gapV2;  // reserved for future V3+
 ```
 
 **Why?** Allows adding new state variables in future upgrades without corrupting existing storage.
@@ -541,4 +584,4 @@ Delegation toggle: Supported. Admin/owner must call `enableDelegation(pollId)` b
 
 ---
 
-**Version**: 4.1.0 | **Last Updated**: 2026-02-22
+**Version**: 4.2.0 | **Last Updated**: 2026-02-28

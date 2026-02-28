@@ -444,9 +444,9 @@ TokenIntegratedVoting also supports `cancelOwnershipTransfer()` and `renounceOwn
 
 The optional upgradeable path (UUPS proxy) allows logic upgrades while preserving storage:
 
-- **V1:** Base voting functionality via `ElectionsManagerUpgradeable`
-- **V2:** Adds categories, weighted votes, pause/unpause, batch voting
-- **Future:** Storage gaps (`uint256[48] private __gap`) reserve slots for future state variables
+- **V1:** Core voting lifecycle (create, vote, reveal, winner) with ported features (removeVoter, changePollAdmin, convenience views) via `ElectionsManagerUpgradeable`
+- **V2:** Adds categories, weighted votes, pause/unpause, deadline extension, emergency end, on-chain descriptions
+- **Future:** Storage gaps (`uint256[46] private __gap` in V1, `uint256[43] private __gapV2` in V2) reserve slots for future state variables
 
 The upgrade requires owner authorisation (`_authorizeUpgrade` calls `onlyOwner`). In a production deployment with multi-sig ownership, this means upgrades require M-of-N approval.
 
@@ -470,10 +470,10 @@ Beyond the storage gap mechanism, the following storage collision risks exist:
 
 | Risk | Description | Mitigation |
 |------|-------------|------------|
-| **Variable reordering** | Changing the order of state variables in an upgraded implementation shifts storage slot assignments, silently corrupting data | Code review discipline; V1 declares `uint256[48] __gap`; V2 adds 4 new mappings and declares its own `uint256[45] __gapV2` for future V3 headroom |
+| **Variable reordering** | Changing the order of state variables in an upgraded implementation shifts storage slot assignments, silently corrupting data | Code review discipline; V1 declares `uint256[46] __gap`; V2 adds 6 new mappings and declares its own `uint256[43] __gapV2` for future V3 headroom |
 | **Inheritance order change** | Modifying the inheritance chain changes the base contract storage layout | V2 inherits from V1 directly; this chain must never be reordered |
 | **Type change** | Changing a variable's type (e.g., `uint256` to `address`) while keeping the same slot causes silent misinterpretation | No automated detection; relies on developer diligence |
-| **Gap arithmetic error** | V2 declares `uint256[45] __gapV2` (separate from V1's `uint256[48] __gap`). An arithmetic mistake here would overwrite existing state in V3+ | Verified in `upgradeable.test.ts` via storage slot validation tests |
+| **Gap arithmetic error** | V2 declares `uint256[43] __gapV2` (separate from V1's `uint256[46] __gap`). An arithmetic mistake here would overwrite existing state in V3+ | Verified in `upgradeable.test.ts` via storage slot validation tests (50 tests) |
 
 **Tooling recommended:** OpenZeppelin's `@openzeppelin/upgrades-core` provides `validateUpgrade()` which detects storage layout incompatibilities automatically. This is not currently integrated into the CI pipeline.
 
