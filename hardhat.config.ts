@@ -1,60 +1,36 @@
-import hardhatToolboxMochaEthersPlugin from "@nomicfoundation/hardhat-toolbox-mocha-ethers";
-import { configVariable, defineConfig } from "hardhat/config";
+import { defineConfig } from "hardhat/config";
 import hardhatEthers from "@nomicfoundation/hardhat-ethers";
-import hardhatTypechain from "@nomicfoundation/hardhat-typechain";
-import hardhatMocha from "@nomicfoundation/hardhat-mocha";
-import hardhatEthersChaiMatchers from "@nomicfoundation/hardhat-ethers-chai-matchers";
-import hardhatNetworkHelpers from "@nomicfoundation/hardhat-network-helpers";
+import hardhatIgnition from "@nomicfoundation/hardhat-ignition";
+import hardhatIgnitionEthers from "@nomicfoundation/hardhat-ignition-ethers";
+import dotenv from "dotenv";
 
+dotenv.config();
 
 export default defineConfig({
-  plugins: [hardhatToolboxMochaEthersPlugin
-, hardhatEthers, hardhatTypechain, hardhatMocha, hardhatEthersChaiMatchers, hardhatNetworkHelpers
+  plugins: [
+    hardhatEthers,
+    hardhatIgnition,
+    hardhatIgnitionEthers
   ],
+
   solidity: {
-    profiles: {
-      default: {
-        version: "0.8.28",
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: 100,
-          },
-          viaIR: true,
-        },
+    version: "0.8.28",
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 100,
       },
-      production: {
-        version: "0.8.28",
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: 100,
-          },
-          viaIR: true,
-        },
-      },
+      viaIR: true,
     },
   },
+
   networks: {
-    hardhatMainnet: {
-      type: "edr-simulated",
-      chainType: "l1",
-    },
-    hardhatOp: {
-      type: "edr-simulated",
-      chainType: "op",
-    },
     sepolia: {
       type: "http",
       chainType: "l1",
-      url: configVariable("SEPOLIA_RPC_URL"),
-      accounts: [configVariable("SEPOLIA_PRIVATE_KEY")],
-    },
-    mainnet: {
-      type: "http",
-      chainType: "l1",
-      url: configVariable("MAINNET_RPC_URL"),
-      accounts: [configVariable("MAINNET_PRIVATE_KEY")],
+      url: process.env.SEPOLIA_RPC_URL!,
+      accounts: [process.env.SEPOLIA_PRIVATE_KEY!],
+      chainId: 11155111,
     },
   },
 });

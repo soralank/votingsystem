@@ -28,3 +28,5 @@ package-lock.json
 /.claude
 
 .DS_Store
+
+.env
