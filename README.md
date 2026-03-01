@@ -1,399 +1,213 @@
-# Voting System - Blockchain-Based Polling Platform
+# Voting System — Trustless Blockchain Polling Platform
 
-A secure, decentralized voting system built with Solidity smart contracts on Ethereum. This system enables transparent poll creation, voting, and result management with robust access controls and security features.
+A production-grade, trustless decentralized voting system built on Ethereum. The system enforces election integrity through on-chain mechanisms — infrastructure locking, commit-reveal secret ballots, democratic result revelation, and zero admin bypass — eliminating the need for voters to trust any administrator.
 
----
-
-## 📋 Table of Contents
-
-- [Features](#features)
-- [Architecture](#architecture)
-- [Smart Contracts](#smart-contracts)
-- [Prerequisites](#prerequisites)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Testing](#testing)
-- [Deployment](#deployment)
-- [Security Features](#security-features)
-- [Project Structure](#project-structure)
-- [Contributing](#contributing)
-- [License](#license)
+[![Solidity](https://img.shields.io/badge/Solidity-0.8.28-blue.svg)](https://soliditylang.org/)
+[![Hardhat](https://img.shields.io/badge/Hardhat-3.1.3-yellow.svg)](https://hardhat.org/)
+[![Tests](https://img.shields.io/badge/Tests-396%20passing-brightgreen.svg)](./test)
+[![CI](https://img.shields.io/badge/CI-GitHub%20Actions-blue.svg)](./.github/workflows/ci.yml)
+[![License](https://img.shields.io/badge/License-Custom-blue.svg)](./LICENSE)
 
 ---
 
-## ✨ Features
+## Design Principles
 
-### Core Functionality
-- **Poll Creation**: Create time-bound polls with custom voting options
-- **Voter Authorization**: Control who can vote in each poll
-- **Secret Ballot**: Vote privacy until results are revealed
-- **Result Management**: Admin-controlled result revelation
-- **Ownership Management**: Two-step ownership transfer for security
+| Principle | Enforcement |
+|-----------|-------------|
+| **Trustlessness** | No actor — including the owner — can observe, alter, or suppress votes before reveal |
+| **Temporal Integrity** | Poll lifecycle governed exclusively by on-chain time; no human override |
+| **Composable Isolation** | Each poll has its own token economy, voter registry, and configuration |
 
-### Security Features
-- **DoS Attack Prevention**: Limits on options and batch operations
-- **Timestamp Manipulation Mitigation**: Time buffers for poll deadlines
-- **Duplicate Prevention**: No duplicate poll titles or option names
-- **Access Controls**: Role-based permissions (Owner, Admin, Voter)
-- **Vote Privacy**: Hidden vote counts and choices until reveal
+For the complete design rationale, threat model, economic model, and invariant specification, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
-## 🏗️ Architecture
+## Capabilities
 
-The system consists of three main smart contracts:
+### Trust & Integrity
+- **Infrastructure Lock** — Contract references (TokenManager, Paymaster, SecretBallotManager, FranchiseManager) are permanently locked after the first poll is created
+- **Secret Ballot** — Commit-reveal scheme: voters submit a hash during voting, reveal after voting closes
+- **Democratic Reveal** — Anyone can call `revealResults()` after the time window passes; no admin gatekeeping
+- **Admin Bypass Removal** — `getOption()`, `getVoterChoice()`, `getWinner()`, `getVoterMultiChoices()`, `getQuadraticVotes()` all require `revealed == true` for everyone, including the owner
+- **Metadata Lock** — `setPollMetadata()` restricted to before poll start time
 
-1. **Ownable.sol**: Base contract for ownership management
-2. **ElectionsManager.sol**: Core voting logic and poll management
-3. **Voting.sol**: Main contract that inherits from ElectionsManager
+### Voting Methods
+- **Traditional Voting** — Voter pays gas, one vote per authorised address
+- **Token-Based Voting** — Per-poll soulbound ERC20 tokens; burned on vote (optional or required per poll)
+- **Gasless Voting** — EIP-712 meta-transactions via VotingPaymaster; admin sponsors gas
+- **Multi-Choice Voting** — Configurable max selections per poll
+- **Quadratic Voting** — Cost = sum of squares of vote amounts; prevents plutocratic dominance
+- **Vote Delegation** — Delegate to a trusted peer; revocable before the delegate votes
 
-### Contract Hierarchy
-```
-Ownable (standalone)
-    ↓
-ElectionsManager (standalone)
-    ↓
-Voting (inherits ElectionsManager)
-```
-
----
-
-## 📜 Smart Contracts
-
-### Ownable.sol
-Provides ownership management with a secure two-step transfer process.
-
-**Key Functions:**
-- `transferOwnership(address)` - Initiate ownership transfer
-- `acceptOwnership()` - New owner accepts ownership
-- `cancelOwnershipTransfer()` - Cancel pending transfer
-- `renounceOwnership()` - Remove ownership (irreversible)
-
-### ElectionsManager.sol
-Core contract handling all voting functionality.
-
-**Key Functions:**
-
-#### Poll Management
-- `createPoll(string title, address admin, uint duration)` - Create new poll
-- `addOptionToPoll(uint pollId, string name)` - Add voting option
-- `endPoll(uint pollId)` - End poll before deadline
-- `revealPoll(uint pollId)` - Reveal poll results
-
-#### Voter Management
-- `addAuthorizedVoter(uint pollId, address voter)` - Authorize single voter
-- `addAuthorizedVoters(uint pollId, address[] voters)` - Batch authorize
-- `removeAuthorizedVoter(uint pollId, address voter)` - Remove authorization
-
-#### Voting
-- `voteInPoll(uint pollId, uint optionId)` - Cast a vote
-
-#### Query Functions
-- `getPollsCount()` - Get total number of polls
-- `getOptionsCount(uint pollId)` - Get options in poll
-- `getOption(uint pollId, uint optionId)` - Get option details
-- `getTotalVotes(uint pollId)` - Get total votes cast
-- `getVoterChoice(uint pollId, address voter)` - Get voter's choice (admin only before reveal)
-- `getPollEndTime(uint pollId)` - Get poll deadline
-
-### Voting.sol
-Main deployment contract that inherits all ElectionsManager functionality.
+### System Features
+- **Franchise System** — Time-limited sub-admin licences with pay-per-poll economics (first poll free)
+- **Modular Composition** — 4 feature modules auto-deployed by ElectionsManager to stay within 24 KB
+- **Per-Poll Managers** — Each poll can use a custom TokenManager and VotingPaymaster
+- **IPFS Metadata** — Off-chain poll descriptions via on-chain URI reference
+- **Upgradeable Path** — Optional UUPS proxy with V2 (categories, weights, pause)
+- **Subgraph Indexing** — GraphQL API via The Graph for real-time event queries
 
 ---
 
-## 📚 Prerequisites
+## Contract Overview
 
-- Node.js (v18 or higher)
-- npm or yarn
-- Hardhat
-- MetaMask or similar Web3 wallet (for deployment)
+| Contract | Role |
+|----------|------|
+| **Voting.sol** | Deployment entry point (inherits ElectionsManager) |
+| **ElectionsManager.sol** | Core: polls, voting, results, trust features, module orchestration |
+| **TokenIntegratedVoting.sol** | Token integration layer + infrastructure lock + ownership |
+| **TimeValidator.sol** | Time validation (min duration, max future start, buffer) |
+| **SecretBallotManager.sol** | Commit-reveal voting (standalone, linked via interface) |
+| **FranchiseManager.sol** | Sub-admin franchise system |
+| **TokenManager.sol** | Per-poll ERC20 token factory |
+| **VotingPaymaster.sol** | Gas sponsorship via EIP-712 signatures |
+| **VotingToken.sol** | Per-poll soulbound burnable ERC20 |
+| **VotingReader.sol** | Read-only aggregator for frontend queries |
+| **MultiChoiceVoting.sol** | Module: multi-choice state |
+| **QuadraticVoting.sol** | Module: quadratic vote state |
+| **DelegationVoting.sol** | Module: delegation state |
+| **MetadataVoting.sol** | Module: IPFS metadata |
 
----
-
-## 🚀 Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/soralank/votingsystem.git
-   cd votingsystem
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Compile contracts**
-   ```bash
-   npx hardhat compile
-   ```
+For detailed contract documentation, see [SOLIDITY_CONTRACTS.md](SOLIDITY_CONTRACTS.md).
 
 ---
 
-## 💻 Usage
+## Quick Start
 
-### Local Development
+### Prerequisites
 
-1. **Start Hardhat Network**
-   ```bash
-   npx hardhat node
-   ```
+- Node.js v18+
+- npm
+- Git
 
-2. **Deploy Contracts**
-   ```bash
-   npx hardhat ignition deploy ignition/modules/Voting.ts --network localhost
-   ```
-
-3. **Interact via Console**
-   ```bash
-   npx hardhat console --network localhost
-   ```
-
-### Example Interactions
-
-```javascript
-// Get contract instance
-const Voting = await ethers.getContractFactory("Voting");
-const voting = await Voting.attach("YOUR_CONTRACT_ADDRESS");
-
-// Create a poll (owner only)
-await voting.createPoll("Favorite Color?", "0xAdminAddress", 3600);
-
-// Add options (admin only)
-await voting.addOptionToPoll(1, "Red");
-await voting.addOptionToPoll(1, "Blue");
-await voting.addOptionToPoll(1, "Green");
-
-// Authorize voters (admin only)
-await voting.addAuthorizedVoter(1, "0xVoterAddress");
-
-// Vote (authorized voter)
-await voting.voteInPoll(1, 2); // Vote for option 2
-
-// Reveal results (admin only)
-await voting.revealPoll(1);
-
-// Get results
-const option = await voting.getOption(1, 2);
-console.log(`Option: ${option.name}, Votes: ${option.votes}`);
-```
-
----
-
-## 🧪 Testing
-
-Run the comprehensive test suite:
+### Installation
 
 ```bash
-# Run all tests
-npx hardhat test
-
-# Run specific test file
-npx hardhat test test/voting.test.ts
-
-# Run with coverage
-npx hardhat coverage
-
-# Run with gas reporting
-REPORT_GAS=true npx hardhat test
+git clone https://github.com/soralank/votingsystem.git
+cd votingsystem
+npm install
+npx hardhat compile
 ```
 
-### Test Coverage
-
-The test suite covers:
-- ✅ Poll creation and management
-- ✅ Option addition and validation
-- ✅ Voter authorization (single and batch)
-- ✅ Voting process and validation
-- ✅ Result revelation and privacy
-- ✅ Access control and permissions
-- ✅ Security limits (MAX_OPTIONS, MAX_VOTERS_BATCH)
-- ✅ Timestamp manipulation prevention
-- ✅ Duplicate prevention
-- ✅ Ownership transfer (two-step process)
-- ✅ Edge cases and error conditions
-
----
-
-## 🌐 Deployment
-
-### Local Network
+### Run Tests
 
 ```bash
-# Terminal 1: Start node
+npx hardhat test                    # 396 tests, 12 suites
+REPORT_GAS=true npx hardhat test    # with gas reporting
+```
+
+### Deploy Locally
+
+```bash
+# Terminal 1
 npx hardhat node
 
-# Terminal 2: Deploy
-npx hardhat ignition deploy ignition/modules/Voting.ts --network localhost
+# Terminal 2
+npx hardhat ignition deploy ignition/modules/GaslessVoting.ts --network localhost
 ```
 
-### Testnet (Sepolia)
-
-1. **Set up environment variables**
-   Create `.env` file:
-   ```env
-   SEPOLIA_RPC_URL=your_rpc_url
-   SEPOLIA_PRIVATE_KEY=your_private_key
-   ```
-
-2. **Deploy to Sepolia**
-   ```bash
-   npx hardhat ignition deploy ignition/modules/Voting.ts --network sepolia
-   ```
-
-### Mainnet
-
-⚠️ **WARNING**: Deploying to mainnet costs real ETH. Ensure thorough testing first.
-
-```bash
-npx hardhat ignition deploy ignition/modules/Voting.ts --network mainnet
-```
+This deploys and auto-wires: ElectionsManager, TokenManager, VotingPaymaster, SecretBallotManager, and FranchiseManager. Once you create the first poll, infrastructure is permanently locked.
 
 ---
 
-## 🔒 Security Features
+## Deployment
 
-### 1. **DoS Attack Prevention**
-- Maximum 100 options per poll (`MAX_OPTIONS`)
-- Maximum 50 voters per batch operation (`MAX_VOTERS_BATCH`)
+| Network | Command |
+|---------|---------|
+| **Local** | `npx hardhat ignition deploy ignition/modules/GaslessVoting.ts --network localhost` |
+| **Sepolia** | `npx hardhat ignition deploy ignition/modules/GaslessVoting.ts --network sepolia` |
+| **Mainnet** | `npx hardhat ignition deploy ignition/modules/GaslessVoting.ts --network mainnet` |
+| **Upgradeable** | `npx hardhat ignition deploy ignition/modules/UpgradeableVoting.ts --network <network>` |
 
-### 2. **Timestamp Manipulation Mitigation**
-- Minimum poll duration: 5 minutes (`MIN_POLL_DURATION`)
-- 30-second time buffer for deadline checks (`TIME_BUFFER`)
-
-### 3. **Vote Privacy**
-- Vote counts hidden until admin reveals results
-- Voter choices hidden from non-admin users
-- Private mappings for sensitive data
-
-### 4. **Access Control**
-- Owner: Can create polls, transfer ownership
-- Admin: Can manage specific poll, add options, authorize voters
-- Voter: Can only vote in authorized polls
-
-### 5. **Duplicate Prevention**
-- No duplicate poll titles
-- No duplicate option names within a poll
-
-### 6. **Two-Step Ownership Transfer**
-- Prevents accidental ownership loss
-- New owner must explicitly accept
+For step-by-step instructions, gas estimates, and post-deployment verification, see [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md).
 
 ---
 
-## 📁 Project Structure
+## Testing
 
-```
-votingsystem/
-├── contracts/
-│   ├── ElectionsManager.sol    # Core voting logic
-│   ├── Ownable.sol              # Ownership management
-│   └── Voting.sol               # Main contract
-├── ignition/
-│   └── modules/
-│       └── Voting.ts            # Deployment script
-├── scripts/
-│   ├── check-contract-state.js # State verification
-│   ├── check-polls.js           # Poll inspection
-│   ├── deploy-elections.js     # Deployment helper
-│   ├── test-create-poll.js     # Poll creation test
-│   ├── test-getPollsCount.js   # Count verification
-│   └── verify.ts                # Contract verification
-├── test/
-│   └── voting.test.ts           # Comprehensive tests
-├── hardhat.config.ts            # Hardhat configuration
-├── package.json                 # Dependencies
-├── tsconfig.json                # TypeScript config
-└── README.md                    # This file
-```
+**396 tests passing** across 12 suites:
+
+| Suite | Tests | Focus |
+|-------|-------|-------|
+| Franchise Manager | 83 | Grant, create polls, transfer, irrevocability, fees, supersede |
+| Core Voting | 46 | Poll lifecycle, voter auth, voting, reveal, scheduled polls |
+| Trust Features | 42 | Infrastructure lock, secret ballot, democratic reveal, admin bypass |
+| Token Manager | 38 | Token creation, allocation, burning, multi-poll isolation |
+| Advanced Features | 35 | Multi-choice, quadratic, delegation, IPFS metadata |
+| Upgradeable | 37 | V1 deploy, V2 upgrade, data preservation, storage safety |
+| Error Codes | 32 | All 56+ error messages verified against contract behaviour |
+| Voting Token | 29 | ERC20 compat, soulbound, mint/burn, approve |
+| Voting Paymaster | 28 | EIP-712 sigs, funding, relayer management, nonces |
+| Event Verification | 14 | Production-grade indexed events |
+| Token Integration | 13 | Token creation on poll, mixed voting methods |
+| Gasless E2E | 7 | Full signature → relay → vote flow |
 
 ---
 
-## 🛠️ Development Tools
+## Security
 
-### Useful Scripts
+### Implemented Protections
 
-```bash
-# Compile contracts
-npm run compile
+- **Reentrancy guards** — Custom `nonReentrant` modifier + CEI pattern on all state-changing vote functions
+- **Infrastructure lock** — Critical contract addresses permanently frozen after first poll
+- **Commit-reveal** — Front-running mitigation for secret ballot polls
+- **EIP-712 signatures** — Replay protection (nonces), deadline enforcement, malleable signature rejection
+- **Access control** — Owner / poll admin / voter role separation with strict modifier enforcement
+- **DoS prevention** — Batch limits (50 voters, 100 options)
+- **Two-step ownership** — `transferOwnership()` → `acceptOwnership()` prevents accidental transfers
+- **Safe ETH transfers** — Low-level `call` with success check
+- **Integer overflow** — Solidity 0.8+ built-in protection
 
-# Run tests
-npm run test
+### Formal Threat Model
 
-# Deploy to localhost
-npm run deploy:local
+A full STRIDE-based threat analysis, attack classification table, privacy disclosure, timestamp dependence analysis, and documented invariants are available in [ARCHITECTURE.md](ARCHITECTURE.md). Operational playbooks and monitoring guidance are in ARCHITECTURE.md §11–12.
 
-# Verify contract on Etherscan
-npm run verify
+### Audit Status
 
-# Clean build artifacts
-npm run clean
-```
+- **Self-audited:** Comprehensive
+- **CI/CD:** GitHub Actions (compile → test → Slither static analysis → deploy check)
+- **Professional audit:** Pending
 
-### Debugging
+### Report Vulnerabilities
 
-```bash
-# Check contract state
-npx hardhat run scripts/check-contract-state.js --network localhost
-
-# View polls
-npx hardhat run scripts/check-polls.js --network localhost
-
-# Test poll creation
-npx hardhat run scripts/test-create-poll.js --network localhost
-```
+ankit.soral@outlook.com
 
 ---
 
-## 🤝 Contributing
+## Documentation
 
-Contributions are welcome! Please follow these guidelines:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-### Code Standards
-- Follow Solidity style guide
-- Write comprehensive tests for new features
-- Document all public functions with NatSpec comments
-- Run `npx hardhat test` before submitting PR
+| Document | Content |
+|----------|---------|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Design intent, trade-offs, threat model, attack classification, economic model, failure modes, governance hardening (upgrade risk matrix, emergency migration, key rotation), invariants, monitoring guide (Grafana queries, Graph queries, maturity model), operational playbooks, V2 delta, formal verification roadmap (Certora/Echidna/Slither), threat simulation appendix |
+| [SOLIDITY_CONTRACTS.md](SOLIDITY_CONTRACTS.md) | Detailed contract documentation — functions, state, events, modifiers |
+| [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) | Step-by-step deployment for local, Sepolia, and mainnet |
+| [docs/ERROR_CODES.md](docs/ERROR_CODES.md) | 56+ error codes with frontend handling guidance |
+| [docs/FRONTEND_INTEGRATION.md](docs/FRONTEND_INTEGRATION.md) | Complete ethers.js integration guide with all user flows |
+| [docs/UPGRADEABLE_MODULE.md](docs/UPGRADEABLE_MODULE.md) | UUPS upgrade guide with V1→V2 example |
+| [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) | Full test breakdown (396 tests, 12 suites) |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines and coding standards |
 
 ---
 
-## 📝 License
+## Project Statistics
 
-This project is licensed under the **ANKIT.SORAL** license.
-
----
-
-## 📞 Support
-
-For issues, questions, or contributions:
-- Open an issue on GitHub
-- Contact: [Your contact information]
-
----
-
-## 🎯 Roadmap
-
-Future enhancements planned:
-- [ ] Multi-choice voting support
-- [ ] Weighted voting options
-- [ ] Vote delegation
-- [ ] Anonymous voting with zk-SNARKs
-- [ ] IPFS integration for poll metadata
-- [ ] Gasless voting via meta-transactions
-- [ ] On-chain voting analytics
+| Metric | Value |
+|--------|-------|
+| Core Contracts | 14 (+ 2 upgradeable variants) |
+| Tests | 396 passing |
+| Test Suites | 12 |
+| Contract Size | 23,932 / 24,576 bytes (ElectionsManager) |
+| Optimizer | 100 runs, viaIR enabled |
+| CI/CD | GitHub Actions (compile → test → Slither → deploy check) |
 
 ---
 
-## ⚠️ Disclaimer
+## License
 
-This software is provided "as is" without warranty. Use at your own risk. Always conduct thorough security audits before deploying to production.
+This project is licensed under a custom license by Ankit Soral. See [LICENSE](LICENSE) for details.
 
 ---
 
-**Built with ❤️ using Solidity, Hardhat, and Ethereum**
+**Version:** 4.1.0 | **Last Updated:** 2026-02-22 | **Status:** Production-Ready
+
+**Built by Ankit Soral — Solidity, Hardhat, Ethereum**
