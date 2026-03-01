@@ -60,8 +60,8 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
       const initializeData = implementation.interface.encodeFunctionData("initialize", []);
 
       // Deploy proxy
-      const ERC1967Proxy = await ethers.getContractFactory("TestERC1967Proxy");
-      const proxy = await ERC1967Proxy.deploy(implementation.target, initializeData);
+      const VotingProxy = await ethers.getContractFactory("VotingProxy");
+      const proxy = await VotingProxy.deploy(implementation.target, initializeData);
       await proxy.waitForDeployment();
 
       proxyAddress = proxy.target as string;
@@ -876,9 +876,9 @@ describe("Upgradeable Voting System - Comprehensive Tests", function () {
       const freshImpl = await ElectionsManagerUpgradeable.deploy();
       await freshImpl.waitForDeployment();
 
-      const ERC1967Proxy = await ethers.getContractFactory("TestERC1967Proxy");
+      const VotingProxy = await ethers.getContractFactory("VotingProxy");
       const initData = freshImpl.interface.encodeFunctionData("initialize", []);
-      const freshProxy = await ERC1967Proxy.deploy(freshImpl.target, initData);
+      const freshProxy = await VotingProxy.deploy(freshImpl.target, initData);
       await freshProxy.waitForDeployment();
 
       const freshV1 = ElectionsManagerUpgradeable.attach(freshProxy.target);

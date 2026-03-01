@@ -1515,7 +1515,7 @@ Slither is already integrated into the CI pipeline (`.github/workflows/ci.yml`).
 
 #### 14.3.1 Recommended Slither Detectors (Already Enabled)
 
-The current CI configuration runs Slither with `--exclude-dependencies` and filters `node_modules` and `ERC1967Proxy.sol`. The following built-in detectors are most relevant:
+The current CI configuration runs Slither with `--exclude-dependencies` and filters `node_modules` and `VotingProxy.sol` (the ERC1967Proxy wrapper). The following built-in detectors are most relevant:
 
 | Detector | Relevance | Expected Findings |
 |----------|-----------|-------------------|
@@ -1575,7 +1575,7 @@ Critical for monitoring framework (§11).
     slither . \
       --hardhat-ignore-compile \
       --exclude-dependencies \
-      --filter-paths "node_modules|contracts/upgradeable/ERC1967Proxy.sol" \
+      --filter-paths "node_modules|contracts/upgradeable/ERC1967Proxy.sol" \  # VotingProxy wrapper
       --detect reentrancy-eth,reentrancy-no-eth,arbitrary-send-eth,suicidal,uninitialized-state \
       --fail-on high \
       --json slither-strict.json

@@ -26,9 +26,8 @@ export default buildModule("UpgradeableVotingSystemV1", (m) => {
   // Encode initialize() call
   const initializeData = m.encodeFunctionCall(electionsManagerImpl, "initialize", []);
 
-  // Deploy ERC1967Proxy
-  // Note: Using OpenZeppelin's ERC1967Proxy from @openzeppelin/contracts
-  const proxy = m.contract("TestERC1967Proxy", [
+  // Deploy VotingProxy (UUPS proxy wrapping OpenZeppelin's ERC1967Proxy)
+  const proxy = m.contract("VotingProxy", [
     electionsManagerImpl,
     initializeData,
   ], {

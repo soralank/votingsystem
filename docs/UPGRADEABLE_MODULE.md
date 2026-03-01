@@ -28,7 +28,7 @@ This module implements **upgradeable smart contracts** for the Voting System usi
                │ All calls go through proxy
                ▼
 ┌──────────────────────────────┐
-│  ERC1967Proxy                │  ← Same address forever
+│  VotingProxy (ERC1967Proxy)  │  ← Same address forever
 │  (Storage + Delegation)      │
 │                              │
 │  - Stores all data           │
