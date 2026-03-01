@@ -1,0 +1,153 @@
+# ─── Core Entities ────────────────────────────────────────────
+
+type Poll @entity {
+  id: ID! # pollId
+  title: String!
+  admin: Bytes! # address
+  startTime: BigInt!
+  endTime: BigInt!
+  tokenVotingEnabled: Boolean!
+  tokenVotingRequired: Boolean!
+  quadraticVotingEnabled: Boolean!
+  maxChoices: Int!
+  metadataURI: String
+  revealed: Boolean!
+  ended: Boolean!
+  totalVotes: BigInt!
+  createdAt: BigInt!
+  createdTx: Bytes!
+  options: [Option!]! @derivedFrom(field: "poll")
+  votes: [Vote!]! @derivedFrom(field: "poll")
+  voters: [Voter!]! @derivedFrom(field: "poll")
+  delegations: [Delegation!]! @derivedFrom(field: "poll")
+  tokenAllocations: [TokenAllocation!]! @derivedFrom(field: "poll")
+}
+
+type Option @entity {
+  id: ID! # pollId-optionId
+  poll: Poll!
+  optionId: BigInt!
+  name: String!
+  voteCount: BigInt!
+}
+
+type Vote @entity {
+  id: ID! # tx hash - log index
+  poll: Poll!
+  voter: Bytes! # address
+  optionId: BigInt
+  optionIds: [BigInt!] # for multi-choice
+  voteAmounts: [BigInt!] # for quadratic
+  method: VoteMethod!
+  isQuadratic: Boolean!
+  isMultiChoice: Boolean!
+  isDelegated: Boolean!
+  delegate: Bytes # address of delegate (if delegated)
+  quadraticCost: BigInt
+  timestamp: BigInt!
+  txHash: Bytes!
+}
+
+enum VoteMethod {
+  GasPayment
+  Token
+}
+
+type Voter @entity {
+  id: ID! # pollId-voterAddress
+  poll: Poll!
+  address: Bytes!
+  authorized: Boolean!
+  hasVoted: Boolean!
+  hasDelegated: Boolean!
+  delegatee: Bytes # who they delegated to
+  delegationsReceived: BigInt!
+  tokenBalance: BigInt!
+  tokensAllocated: BigInt!
+  tokensBurned: BigInt!
+}
+
+type Delegation @entity {
+  id: ID! # pollId-delegatorAddress
+  poll: Poll!
+  delegator: Bytes!
+  delegatee: Bytes!
+  active: Boolean!
+  createdAt: BigInt!
+  removedAt: BigInt
+}
+
+# ─── Token Entities ──────────────────────────────────────────
+
+type TokenAllocation @entity {
+  id: ID! # tx hash - log index
+  poll: Poll!
+  voter: Bytes!
+  amount: BigInt!
+  timestamp: BigInt!
+  txHash: Bytes!
+}
+
+type TokenBurn @entity {
+  id: ID! # tx hash - log index
+  pollId: BigInt!
+  voter: Bytes!
+  amount: BigInt!
+  timestamp: BigInt!
+  txHash: Bytes!
+}
+
+type PollToken @entity {
+  id: ID! # pollId
+  pollId: BigInt!
+  tokenAddress: Bytes!
+  name: String!
+  symbol: String!
+  createdAt: BigInt!
+}
+
+# ─── Paymaster Entities ──────────────────────────────────────
+
+type GasSponsorship @entity {
+  id: ID! # tx hash - log index
+  pollId: BigInt!
+  voter: Bytes!
+  gasUsed: BigInt!
+  gasPrice: BigInt!
+  totalCost: BigInt!
+  timestamp: BigInt!
+  txHash: Bytes!
+}
+
+type PaymasterFunding @entity {
+  id: ID! # tx hash - log index
+  funder: Bytes!
+  amount: BigInt!
+  timestamp: BigInt!
+  txHash: Bytes!
+}
+
+# ─── Aggregation Entities ────────────────────────────────────
+
+type PollStats @entity {
+  id: ID! # pollId
+  totalVotersAuthorized: BigInt!
+  totalVotesCast: BigInt!
+  participationRate: BigDecimal!
+  gasVotes: BigInt!
+  tokenVotes: BigInt!
+  quadraticVotes: BigInt!
+  multiChoiceVotes: BigInt!
+  delegatedVotes: BigInt!
+  totalDelegations: BigInt!
+  totalTokensAllocated: BigInt!
+  totalTokensBurned: BigInt!
+}
+
+type GlobalStats @entity {
+  id: ID! # "global"
+  totalPolls: BigInt!
+  totalVotes: BigInt!
+  totalVoters: BigInt!
+  totalGasSponsored: BigInt!
+}

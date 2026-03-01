@@ -1,8 +1,10 @@
 # Contributing to Voting System
 
-Thank you for your interest in contributing to the Voting System project! This document provides guidelines and instructions for contributing.
+Thank you for your interest in contributing. This document establishes the guidelines, coding standards, and review process for all contributions to the Voting System project.
 
-## 📋 Table of Contents
+---
+
+## Table of Contents
 
 - [Code of Conduct](#code-of-conduct)
 - [Getting Started](#getting-started)
@@ -11,168 +13,147 @@ Thank you for your interest in contributing to the Voting System project! This d
 - [Pull Request Process](#pull-request-process)
 - [Testing Requirements](#testing-requirements)
 - [Documentation](#documentation)
-- [Community](#community)
+- [Security](#security)
 
-## 📜 Code of Conduct
+---
 
-### Our Pledge
+## Code of Conduct
 
-We pledge to make participation in our project a harassment-free experience for everyone, regardless of age, body size, disability, ethnicity, gender identity and expression, level of experience, nationality, personal appearance, race, religion, or sexual identity and orientation.
+All participants are expected to maintain a professional, respectful, and inclusive environment. Harassment, personal attacks, and publishing private information without consent are not tolerated. Focus discussions on technical merit, accept constructive feedback gracefully, and engage with empathy.
 
-### Our Standards
+---
 
-**Positive Behavior:**
-- Using welcoming and inclusive language
-- Being respectful of differing viewpoints
-- Gracefully accepting constructive criticism
-- Focusing on what is best for the community
-- Showing empathy towards other community members
-
-**Unacceptable Behavior:**
-- Trolling, insulting/derogatory comments, and personal attacks
-- Public or private harassment
-- Publishing others' private information without permission
-- Other conduct which could reasonably be considered inappropriate
-
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
-Ensure you have:
-- Node.js v18.x or higher
-- npm or yarn
-- Git
-- A GitHub account
-- Basic knowledge of Solidity and TypeScript
+| Requirement | Version |
+|-------------|---------|
+| Node.js | v18.0.0+ |
+| npm | 9.0.0+ |
+| Git | Latest |
+| Solidity knowledge | Intermediate+ |
+| TypeScript knowledge | Basic+ |
 
-### Setting Up Your Development Environment
+### Environment Setup
 
-1. **Fork the Repository**
+```bash
+# 1. Fork the repository on GitHub
 
-   Click the "Fork" button on the GitHub repository page.
+# 2. Clone your fork
+git clone https://github.com/YOUR_USERNAME/votingsystem.git
+cd votingsystem
 
-2. **Clone Your Fork**
+# 3. Add upstream remote
+git remote add upstream https://github.com/soralank/votingsystem.git
 
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/votingsystem.git
-   cd votingsystem
-   ```
+# 4. Install dependencies
+npm install
 
-3. **Add Upstream Remote**
+# 5. Verify setup
+npx hardhat compile
+npx hardhat test
+```
 
-   ```bash
-   git remote add upstream https://github.com/soralank/votingsystem.git
-   ```
+All 396 tests must pass before proceeding.
 
-4. **Install Dependencies**
+---
 
-   ```bash
-   npm install
-   ```
-
-5. **Verify Setup**
-
-   ```bash
-   npx hardhat compile
-   npx hardhat test
-   ```
-
-## 🔄 Development Workflow
+## Development Workflow
 
 ### 1. Create a Feature Branch
 
-Always create a new branch for your work:
-
 ```bash
-git checkout -b feature/your-feature-name
+git checkout -b <prefix>/short-description
 ```
 
 Branch naming conventions:
-- `feature/` - New features
-- `fix/` - Bug fixes
-- `docs/` - Documentation updates
-- `test/` - Test additions or modifications
-- `refactor/` - Code refactoring
 
-### 2. Make Your Changes
+| Prefix | Purpose |
+|--------|---------|
+| `feature/` | New features |
+| `fix/` | Bug fixes |
+| `docs/` | Documentation updates |
+| `test/` | Test additions or modifications |
+| `refactor/` | Code restructuring |
 
-- Write clean, readable code
-- Follow the coding standards (see below)
-- Add tests for new functionality
-- Update documentation as needed
+### 2. Implement Changes
 
-### 3. Commit Your Changes
+- Write clean, readable code adhering to the standards below
+- Add tests for all new functionality
+- Update documentation where applicable
 
-Use clear, descriptive commit messages:
+### 3. Commit
+
+Use conventional commit messages:
 
 ```bash
-git add .
 git commit -m "feat: add voter delegation feature"
 ```
 
-Commit message format:
-- `feat:` - New feature
-- `fix:` - Bug fix
-- `docs:` - Documentation changes
-- `test:` - Adding or updating tests
-- `refactor:` - Code refactoring
-- `chore:` - Maintenance tasks
+| Prefix | Meaning |
+|--------|---------|
+| `feat:` | New feature |
+| `fix:` | Bug fix |
+| `docs:` | Documentation change |
+| `test:` | Test addition or update |
+| `refactor:` | Code restructuring (no behaviour change) |
+| `chore:` | Maintenance task |
 
-### 4. Keep Your Branch Updated
+### 4. Stay Current
 
 ```bash
 git fetch upstream
 git rebase upstream/main
 ```
 
-### 5. Push to Your Fork
+### 5. Push and Open a Pull Request
 
 ```bash
-git push origin feature/your-feature-name
+git push origin <branch-name>
 ```
 
-### 6. Create a Pull Request
+Navigate to the original repository and create a Pull Request.
 
-Go to the original repository and click "New Pull Request".
+---
 
-## 💻 Coding Standards
+## Coding Standards
 
-### Solidity Style Guide
+### Solidity
 
-Follow the [Official Solidity Style Guide](https://docs.soliditylang.org/en/latest/style-guide.html).
+Follow the [Solidity Style Guide](https://docs.soliditylang.org/en/latest/style-guide.html).
 
-**Key Points:**
+**Contract Structure:**
 
 ```solidity
 // SPDX-License-Identifier: ANKIT.SORAL
 pragma solidity ^0.8.20;
 
 /// @title Contract Title
-/// @notice Explain contract purpose
-/// @dev Developer notes
+/// @notice High-level purpose
+/// @dev Implementation notes
 contract MyContract {
-    // State variables
+    // 1. State variables
     uint public immutable MAX_VALUE = 100;
     address private _owner;
 
-    // Events
+    // 2. Events
     event ValueUpdated(uint indexed oldValue, uint indexed newValue);
 
-    // Modifiers
+    // 3. Modifiers
     modifier onlyOwner() {
         require(msg.sender == _owner, "Not owner");
         _;
     }
 
-    // Functions: external, public, internal, private
-    
+    // 4. Functions (external → public → internal → private)
     /// @notice Update a value
     /// @param newValue The new value to set
     /// @return success Whether the operation succeeded
-    function updateValue(uint newValue) 
-        external 
-        onlyOwner 
-        returns (bool success) 
+    function updateValue(uint newValue)
+        external
+        onlyOwner
+        returns (bool success)
     {
         require(newValue <= MAX_VALUE, "Value too high");
         emit ValueUpdated(_value, newValue);
@@ -183,111 +164,72 @@ contract MyContract {
 ```
 
 **Naming Conventions:**
-- Contracts: `PascalCase`
-- Functions: `camelCase`
-- Variables: `camelCase`
-- Constants: `UPPER_SNAKE_CASE`
-- Private variables: `_leadingUnderscore`
-- Events: `PascalCase`
 
-### TypeScript Style Guide
+| Element | Convention | Example |
+|---------|-----------|---------|
+| Contracts | PascalCase | `ElectionsManager` |
+| Functions | camelCase | `createPoll` |
+| Variables | camelCase | `pollCount` |
+| Constants | UPPER_SNAKE_CASE | `MAX_OPTIONS` |
+| Private variables | Leading underscore | `_owner` |
+| Events | PascalCase | `PollCreated` |
+
+**Gas Optimisation:**
+
+- Use `calldata` for read-only array/struct parameters
+- Minimise storage writes; prefer memory computation
+- Use `immutable` and `constant` where applicable
+- Use batch operations over individual calls
+- Avoid unbounded loops over dynamic arrays
+
+**Security Patterns:**
+
+- Apply the Checks-Effects-Interactions (CEI) pattern on all state-changing functions
+- Validate all inputs: non-zero addresses, non-empty strings, range checks
+- Use access control modifiers consistently
+- Never make external calls before updating state
+- Solidity 0.8+ provides built-in overflow/underflow protection
+
+### TypeScript
 
 ```typescript
-// Use strict TypeScript
 import { expect } from "chai";
 import { ethers } from "hardhat";
-
-// Interfaces with PascalCase
-interface VotingConfig {
-    pollId: number;
-    duration: number;
-}
-
-// Functions with camelCase
-async function deployContract(): Promise<Contract> {
-    const ContractFactory = await ethers.getContractFactory("Voting");
-    const contract = await ContractFactory.deploy();
-    await contract.waitForDeployment();
-    return contract;
-}
 
 // Use descriptive variable names
 const votingContract = await deployContract();
 const pollCreationTx = await votingContract.createPoll("Test", admin, 3600);
 ```
 
-### Gas Optimization
+- Use strict TypeScript (no `any` unless unavoidable)
+- Prefer `const` over `let`; avoid `var`
+- Use PascalCase for interfaces, camelCase for functions and variables
+- Use descriptive names over abbreviations
 
-- Use `calldata` for read-only function parameters
-- Minimize storage operations
-- Use `immutable` and `constant` when possible
-- Batch operations where applicable
-- Avoid loops over unbounded arrays
+---
 
-### Security Best Practices
+## Pull Request Process
 
-1. **Input Validation**
-   ```solidity
-   require(value > 0, "Value must be positive");
-   require(address != address(0), "Invalid address");
-   ```
+### Pre-Submission Checklist
 
-2. **Access Control**
-   ```solidity
-   modifier onlyAdmin() {
-       require(msg.sender == admin, "Only admin");
-       _;
-   }
-   ```
+```bash
+# 1. Run full test suite
+npx hardhat test
 
-3. **Reentrancy Protection**
-   ```solidity
-   // State changes before external calls
-   hasVoted[msg.sender] = true;
-   externalContract.call();
-   ```
+# 2. Compile contracts
+npx hardhat compile
 
-4. **Safe Math**
-   - Solidity 0.8.0+ has built-in overflow protection
-   - Use SafeMath for older versions
+# 3. Verify gas impact (for contract changes)
+REPORT_GAS=true npx hardhat test
+```
 
-## 🔍 Pull Request Process
-
-### Before Submitting
-
-1. **Run All Tests**
-   ```bash
-   npx hardhat test
-   ```
-
-2. **Check Code Coverage**
-   ```bash
-   npx hardhat coverage
-   ```
-   Aim for >90% coverage for new code.
-
-3. **Lint Your Code**
-   ```bash
-   npm run lint
-   ```
-
-4. **Compile Contracts**
-   ```bash
-   npx hardhat compile
-   ```
-
-5. **Update Documentation**
-   - Update relevant .md files
-   - Add inline code comments
-   - Update README if needed
+All 396 existing tests must continue to pass. New features require new tests.
 
 ### PR Template
 
-When creating a pull request, include:
-
 ```markdown
 ## Description
-Brief description of changes
+Brief description of changes.
 
 ## Type of Change
 - [ ] Bug fix
@@ -298,39 +240,41 @@ Brief description of changes
 ## Testing
 - [ ] All existing tests pass
 - [ ] New tests added for new functionality
-- [ ] Manual testing completed
+- [ ] Manual testing completed on local network
 
 ## Checklist
 - [ ] Code follows project style guidelines
 - [ ] Self-review completed
-- [ ] Comments added to complex code
+- [ ] Comments added to complex logic
 - [ ] Documentation updated
-- [ ] No new warnings generated
-- [ ] Tests added with >90% coverage
+- [ ] No new compiler warnings
+- [ ] Contract size remains under 24 KB (if modifying ElectionsManager)
 
 ## Related Issues
 Closes #(issue number)
-
-## Screenshots (if applicable)
 ```
 
 ### Review Process
 
-1. **Automated Checks**: CI/CD runs tests and linting
-2. **Code Review**: Maintainers review code quality and design
-3. **Feedback**: Address review comments
-4. **Approval**: At least one maintainer approval required
-5. **Merge**: Maintainer merges after approval
+1. **Automated checks** — CI/CD runs compile, test, and Slither static analysis
+2. **Code review** — Maintainer reviews design, quality, and security implications
+3. **Feedback** — Address review comments with new commits
+4. **Approval** — At least one maintainer approval required
+5. **Merge** — Maintainer merges after approval
 
-## 🧪 Testing Requirements
+---
 
-### Test Coverage Requirements
+## Testing Requirements
 
-- **Critical Functions**: 100% coverage
-- **New Features**: Minimum 90% coverage
-- **Overall Project**: Maintain >85% coverage
+### Coverage Targets
 
-### Writing Tests
+| Scope | Requirement |
+|-------|-------------|
+| Critical functions (voting, token, access control) | 100% |
+| New features | Minimum 90% |
+| Overall project | Maintain above 85% |
+
+### Test Structure
 
 ```typescript
 describe("MyFeature", function () {
@@ -349,7 +293,7 @@ describe("MyFeature", function () {
         expect(result).to.equal(expectedValue);
     });
 
-    it("should revert with error message", async function () {
+    it("should revert with correct error message", async function () {
         await expect(
             contract.connect(user).restrictedFunction()
         ).to.be.revertedWith("Not authorized");
@@ -359,123 +303,97 @@ describe("MyFeature", function () {
 
 ### Test Categories
 
-1. **Unit Tests**: Test individual functions
-2. **Integration Tests**: Test contract interactions
-3. **Edge Cases**: Boundary conditions and error scenarios
-4. **Security Tests**: Access control and attack vectors
-5. **Gas Tests**: Ensure operations are gas-efficient
+| Category | Purpose |
+|----------|---------|
+| Unit tests | Individual function behaviour |
+| Integration tests | Cross-contract interactions |
+| Edge cases | Boundary conditions, overflow, empty inputs |
+| Security tests | Access control enforcement, attack vectors |
+| Trust tests | Infrastructure lock, secret ballot, democratic reveal |
+| Gas tests | Verify operations remain gas-efficient |
 
-## 📝 Documentation
+---
 
-### What to Document
+## Documentation
 
-1. **Code Comments**
-   - Complex logic explanation
-   - Security considerations
-   - Gas optimization notes
+### Requirements for All Changes
 
-2. **Function Documentation**
-   - Purpose and behavior
-   - Parameters and return values
-   - Example usage
+1. **Code comments** — Explain complex logic, security considerations, and gas optimisation rationale
+2. **Function documentation** — NatSpec for all public/external functions
+3. **Architecture changes** — Update [ARCHITECTURE.md](ARCHITECTURE.md) if modifying design patterns or adding new contracts. If the change affects threat model, update the Attack Classification Table (§4.7) and Threat Simulation Appendix (§15). If it introduces new events, update the Operational Monitoring Guide (§11). If it affects governance or ownership, update the Governance Hardening Checklist (§7.5) and Upgrade Risk Matrix (§7.5.6). If it modifies invariants, update the Formal Verification Roadmap (§14) with corresponding Certora/Echidna properties.
+4. **README** — Update if features, installation steps, or statistics change
+5. **Error codes** — Document new revert messages in [docs/ERROR_CODES.md](docs/ERROR_CODES.md)
 
-3. **Architecture Changes**
-   - Update ARCHITECTURE.md
-   - Explain design decisions
+### Style
 
-4. **README Updates**
-   - New features or changes
-   - Updated installation steps
-   - New usage examples
+- Use clear, technical language
+- Include code examples for non-trivial features
+- Explain the rationale ("why") in addition to the mechanism ("what")
+- Keep documentation current with code changes
 
-### Documentation Style
+---
 
-- Use clear, concise language
-- Include code examples
-- Explain the "why" not just the "what"
-- Keep it up-to-date
+## Security
 
-## 👥 Community
+### Reporting Vulnerabilities
 
-### Getting Help
+**Do not** open public issues for security vulnerabilities.
 
-- **GitHub Issues**: Report bugs or request features
-- **Discussions**: Ask questions and share ideas
-- **Pull Requests**: Contribute code
+Contact: **ankit.soral@outlook.com**
 
-### Communication Guidelines
+Include:
+- Clear description of the vulnerability
+- Steps to reproduce
+- Potential impact assessment
+- Suggested fix (if applicable)
 
-- Be respectful and professional
-- Provide context and details
-- Be patient with responses
-- Help others when you can
+### Security Standards for Contributions
 
-## 🏆 Recognition
+All contributions touching contract logic must:
 
-Contributors will be:
-- Listed in project acknowledgments
-- Credited in release notes
-- Recognized in the README (for significant contributions)
+1. Follow the Checks-Effects-Interactions pattern
+2. Validate all external inputs
+3. Include access control where appropriate
+4. Not introduce unbounded loops or storage growth
+5. Not exceed the 24 KB contract size limit for ElectionsManager (currently at 23,932 bytes)
+6. Pass Slither static analysis without new findings
 
-## 📋 Issue Guidelines
+---
 
-### Reporting Bugs
+## Issue Guidelines
+
+### Bug Reports
 
 Include:
 - Clear title and description
 - Steps to reproduce
-- Expected vs actual behavior
-- Environment details (Node version, OS, etc.)
-- Code samples if applicable
+- Expected versus actual behaviour
+- Environment details (Node.js version, OS, network)
+- Code samples or transaction hashes if applicable
 
 ### Feature Requests
 
 Include:
 - Use case description
-- Proposed solution
+- Proposed implementation approach
 - Alternative solutions considered
-- Impact assessment
-
-### Security Issues
-
-**DO NOT** open public issues for security vulnerabilities.
-Contact maintainers privately at: [security contact method]
-
-## ✅ Contribution Checklist
-
-Before submitting a PR:
-
-- [ ] Code compiles without errors
-- [ ] All tests pass
-- [ ] New tests added for new features
-- [ ] Code coverage maintained
-- [ ] Documentation updated
-- [ ] Commit messages follow conventions
-- [ ] No merge conflicts
-- [ ] PR description is complete
-- [ ] Changes are backwards compatible (or noted)
-
-## 🎓 Learning Resources
-
-- [Solidity Documentation](https://docs.soliditylang.org/)
-- [Hardhat Documentation](https://hardhat.org/getting-started/)
-- [Ethers.js Documentation](https://docs.ethers.org/)
-- [Ethereum Development Best Practices](https://consensys.github.io/smart-contract-best-practices/)
-
-## 📜 License
-
-By contributing, you agree that your contributions will be licensed under the same license as the project (ANKIT.SORAL).
+- Gas and storage impact assessment
 
 ---
 
-## Thank You! 🙏
+## Recognition
 
-Your contributions make this project better for everyone. We appreciate your time and effort!
-
-**Questions?** Open a discussion or reach out to the maintainers.
-
-**Ready to contribute?** Start by checking our [good first issues](https://github.com/soralank/votingsystem/labels/good%20first%20issue)!
+Contributors will be credited in:
+- Project acknowledgments
+- Release notes
+- README (for significant contributions)
 
 ---
 
-*Last updated: February 2026*
+## License
+
+By contributing, you agree that your contributions will be licensed under the same terms as the project. See [LICENSE](LICENSE) for details.
+
+---
+
+**Version**: 4.1.0 | **Last Updated**: 2026-02-22
