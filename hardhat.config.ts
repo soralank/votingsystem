@@ -4,6 +4,7 @@ import hardhatEthersChaiMatchers from "@nomicfoundation/hardhat-ethers-chai-matc
 import hardhatIgnition from "@nomicfoundation/hardhat-ignition";
 import hardhatIgnitionEthers from "@nomicfoundation/hardhat-ignition-ethers";
 import hardhatMocha from "@nomicfoundation/hardhat-mocha";
+import hardhatVerify from "@nomicfoundation/hardhat-verify";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -15,6 +16,7 @@ export default defineConfig({
     hardhatIgnition,
     hardhatIgnitionEthers,
     hardhatMocha,
+    hardhatVerify,
   ],
 
   solidity: {
@@ -39,6 +41,12 @@ export default defineConfig({
           viaIR: true,
         },
       },
+    },
+  },
+
+  verify: {
+    etherscan: {
+      apiKey: process.env.ETHERSCAN_API_KEY!,
     },
   },
 
