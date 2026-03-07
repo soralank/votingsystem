@@ -89,7 +89,6 @@ contract ElectionsManagerUpgradeable is Initializable, UUPSUpgradeable, OwnableU
 
     function initialize() public initializer {
         __Ownable_init(msg.sender);
-        __UUPSUpgradeable_init();
         emit Initialized(msg.sender);
     }
 
