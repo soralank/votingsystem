@@ -1,7 +1,9 @@
 import { defineConfig } from "hardhat/config";
 import hardhatEthers from "@nomicfoundation/hardhat-ethers";
+import hardhatEthersChaiMatchers from "@nomicfoundation/hardhat-ethers-chai-matchers";
 import hardhatIgnition from "@nomicfoundation/hardhat-ignition";
 import hardhatIgnitionEthers from "@nomicfoundation/hardhat-ignition-ethers";
+import hardhatMocha from "@nomicfoundation/hardhat-mocha";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -9,18 +11,34 @@ dotenv.config();
 export default defineConfig({
   plugins: [
     hardhatEthers,
+    hardhatEthersChaiMatchers,
     hardhatIgnition,
-    hardhatIgnitionEthers
+    hardhatIgnitionEthers,
+    hardhatMocha,
   ],
 
   solidity: {
-    version: "0.8.28",
-    settings: {
-      optimizer: {
-        enabled: true,
-        runs: 100,
+    profiles: {
+      default: {
+        version: "0.8.28",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 100,
+          },
+          viaIR: true,
+        },
       },
-      viaIR: true,
+      production: {
+        version: "0.8.28",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 100,
+          },
+          viaIR: true,
+        },
+      },
     },
   },
 
